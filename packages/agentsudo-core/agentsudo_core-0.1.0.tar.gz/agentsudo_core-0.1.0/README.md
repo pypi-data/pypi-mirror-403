@@ -1,0 +1,626 @@
+﻿# AgentSudo - Zero Trust Middleware for AI Agents
+
+<p align="center">
+  <strong>Just-In-Time (JIT) Access Control for AI Agents</strong><br>
+  Prevent Denial of Wallet • Block Dangerous Actions • Enforce Least Privilege
+</p>
+
+---
+
+## Overview
+
+**AgentSudo** is a security middleware that implements Zero Trust architecture for AI agents. It acts as a gatekeeper between AI agents and external tools/APIs, ensuring that:
+
+1. **No agent overspends** (Denial of Wallet Prevention)
+2. **No dangerous actions execute** (Context-Aware Security)
+3. **No unauthorized access occurs** (Just-In-Time Permissions)
+
+### The Problem
+
+AI agents are increasingly autonomous, making API calls and executing actions without human oversight. This creates two critical risks:
+
+| Risk | Description | Example |
+|------|-------------|---------|
+| **Denial of Wallet** | Runaway agents making unlimited API calls | An agent stuck in a loop making 10,000 GPT-4 calls |
+| **Dangerous Actions** | Agents executing destructive operations | An agent running `DROP TABLE users` on production |
+
+### The Solution
+
+AgentSudo enforces **Zero Trust** principles:
+
+- **Never trust, always verify** - Every tool invocation requires explicit permission
+- **Just-In-Time access** - Tokens are short-lived and scoped to specific actions
+- **Intent analysis** - Agent must declare *why* it needs access
+- **Budget enforcement** - Hard limits on spending per agent
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         AgentSudo Architecture                       │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌──────────────┐      ┌──────────────────┐      ┌──────────────────┐
+│              │      │                  │      │                  │
+│   AI Agent   │─────▶│  AgentSudo SDK   │─────▶│  AgentSudo       │
+│              │      │  (agent_sudo.py) │      │  Server          │
+│              │      │                  │      │  (server.py)     │
+└──────────────┘      └──────────────────┘      └────────┬─────────┘
+                                                         │
+                                                         ▼
+                                                ┌──────────────────┐
+                                                │  policies.yaml   │
+                                                │  (The Brain)     │
+                                                └──────────────────┘
+
+Flow:
+1. Agent requests tool access via SDK
+2. SDK sends request with intent description
+3. Server validates: Auth → Permission → Context → Budget
+4. If approved: Returns JIT token
+5. If denied: Returns specific error (401/403/429)
+```
+
+### Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| **The Brain** | `policies.yaml` | Defines agents, permissions, budgets, and blocked keywords |
+| **The Authority** | `server.py` | FastAPI server that validates requests and issues tokens |
+| **The SDK** | `agent_sudo.py` | Python library for agents to request access |
+| **The Demo** | `demo_context.py` | Validation script demonstrating all security controls |
+
+---
+
+## Installation
+
+### Prerequisites
+
+- Python 3.10+
+- pip
+
+### Install Dependencies
+
+```bash
+pip install fastapi uvicorn pyyaml httpx pydantic
+```
+
+### Project Structure
+
+```
+agentsudo/
+├── policies.yaml      # Agent policies and rules
+├── server.py          # FastAPI backend server
+├── agent_sudo.py      # Python SDK
+├── demo_context.py    # Validation/demo script
+└── README.md          # This documentation
+```
+
+---
+
+## Quick Start
+
+### Step 1: Start the Server
+
+```bash
+uvicorn server:app --reload --port 8000
+```
+
+You should see:
+```
+INFO:     AgentSudo Server Started - Zero Trust Mode Active
+INFO:     Uvicorn running on http://127.0.0.1:8000
+```
+
+### Step 2: Run the Demo
+
+In a new terminal:
+
+```bash
+python demo_context.py
+```
+
+### Step 3: Verify Output
+
+```
+============================================================
+  AgentSudo - Zero Trust AI Agent Middleware Demo
+============================================================
+
+>> Checking server connectivity...
+[+] Server is healthy!
+
+============================================================
+  TEST 1: Context-Aware Security
+============================================================
+
+>> Testing SAFE intent...
+[+] Safe read access granted!
+
+>> Testing DANGEROUS intent (DELETE)...
+[+] Dangerous action was BLOCKED correctly!
+    Reason: Context Alert: Dangerous intent detected. Blocked keyword: 'delete'
+```
+
+---
+
+## Configuration
+
+### policies.yaml Reference
+
+```yaml
+# Agent Definition
+agents:
+  agent_id:                          # Unique identifier
+    secret: "authentication_secret"  # Agent credential
+    max_hourly_budget_usd: 5.00      # Spending limit per hour
+    description: "Agent description" # Optional documentation
+    
+    allowed_tools:                   # List of permitted tools
+      - name: "tool_name"            # Tool identifier
+        cost_per_call_usd: 0.03      # Cost charged per invocation
+        permission: "invoke"         # Permission level
+        description: "Tool desc"     # Optional documentation
+        blocked_keywords:            # Context-aware blocklist
+          - "dangerous_word"
+          - "another_bad_word"
+
+# Global Settings
+settings:
+  token_expiry_seconds: 300          # JIT token lifetime (5 min)
+  budget_reset_interval: "hourly"    # When budgets reset
+  log_level: "INFO"                  # Logging verbosity
+  enforce_context_check: true        # Enable/disable intent analysis
+```
+
+### Example: Two-Agent Configuration
+
+```yaml
+agents:
+  # Senior agent with higher privileges
+  research_bot_01:
+    secret: "secret_123"
+    max_hourly_budget_usd: 5.00
+    allowed_tools:
+      - name: "openai_api"
+        cost_per_call_usd: 0.03
+        permission: "invoke"
+        blocked_keywords: []
+        
+      - name: "database_api"
+        cost_per_call_usd: 0.00
+        permission: "read_only"
+        blocked_keywords:
+          - "delete"
+          - "drop"
+          - "truncate"
+
+  # Junior agent with restricted access
+  intern_bot_02:
+    secret: "intern_secret_456"
+    max_hourly_budget_usd: 1.00
+    allowed_tools:
+      - name: "google_search"
+        cost_per_call_usd: 0.01
+        permission: "invoke"
+        blocked_keywords:
+          - "hack"
+          - "exploit"
+```
+
+---
+
+## API Reference
+
+### Server Endpoints
+
+#### `POST /request-access`
+
+Request Just-In-Time access to a tool.
+
+**Request Body:**
+```json
+{
+  "agent_id": "research_bot_01",
+  "agent_secret": "secret_123",
+  "tool_name": "openai_api",
+  "intent_description": "Summarize the research paper for the user"
+}
+```
+
+**Success Response (200):**
+```json
+{
+  "status": "approved",
+  "token": "agentsudo_research_bot_01_openai_api_1699999999_abc123...",
+  "tool": "openai_api",
+  "expires_in_seconds": 300,
+  "remaining_budget_usd": 4.97,
+  "message": "JIT access granted for 300 seconds"
+}
+```
+
+**Error Responses:**
+
+| Status | Condition | Response |
+|--------|-----------|----------|
+| `401` | Invalid credentials | `{"detail": "Authentication Failed: Invalid credentials"}` |
+| `403` | Tool not allowed | `{"detail": "Permission Denied: Tool 'x' not in allowed list"}` |
+| `403` | Dangerous intent | `{"detail": "Context Alert: Dangerous intent detected. Blocked keyword: 'delete'"}` |
+| `429` | Budget exceeded | `{"detail": "Budget Exceeded: Current spend $5.00 + $0.03 exceeds limit $5.00/hour"}` |
+
+#### `GET /health`
+
+Health check endpoint.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "service": "AgentSudo"
+}
+```
+
+#### `GET /spend/{agent_id}`
+
+Get current spend status for an agent.
+
+**Response:**
+```json
+{
+  "agent_id": "research_bot_01",
+  "current_spend_usd": 1.50,
+  "max_budget_usd": 5.00,
+  "remaining_usd": 3.50,
+  "request_count": 50,
+  "window_start": "2024-01-15T10:00:00"
+}
+```
+
+#### `GET /agents`
+
+List registered agent IDs (admin endpoint).
+
+**Response:**
+```json
+{
+  "registered_agents": ["research_bot_01", "intern_bot_02"]
+}
+```
+
+---
+
+## SDK Reference
+
+### AgentSudo Class
+
+```python
+from agent_sudo import AgentSudo, BudgetExceededError, PermissionError
+
+# Initialize client
+sudo = AgentSudo(
+    agent_id="research_bot_01",
+    secret="secret_123",
+    server_url="http://localhost:8000"  # Optional, defaults to localhost
+)
+
+# Request tool access (the core Zero Trust method)
+token = sudo.get_session(
+    tool_name="openai_api",
+    reason="Generate summary of user's document"
+)
+
+# Use the token
+print(token.token)                  # The JIT access token
+print(token.expires_in_seconds)     # Token lifetime
+print(token.remaining_budget_usd)   # Budget remaining
+
+# Check budget status
+status = sudo.check_budget()
+print(f"Spent: ${status['current_spend_usd']}")
+
+# Health check
+if sudo.health_check():
+    print("Server is available")
+
+# Clean up
+sudo.close()
+```
+
+### Context Manager Support
+
+```python
+with AgentSudo("research_bot_01", "secret_123") as sudo:
+    token = sudo.get_session("openai_api", reason="Summarize text")
+    # Use token...
+# Automatically closed
+```
+
+### Exception Handling
+
+```python
+from agent_sudo import (
+    AgentSudo,
+    AuthenticationError,
+    PermissionError,
+    BudgetExceededError,
+    ConnectionError
+)
+
+sudo = AgentSudo("agent_id", "secret")
+
+try:
+    token = sudo.get_session("tool", reason="intent")
+    
+except AuthenticationError as e:
+    # Invalid agent_id or secret
+    print(f"Auth failed: {e}")
+    
+except PermissionError as e:
+    # Tool not allowed OR dangerous intent detected
+    print(f"Access denied: {e}")
+    
+except BudgetExceededError as e:
+    # Hourly budget exhausted
+    print(f"Budget exceeded: {e}")
+    
+except ConnectionError as e:
+    # Server unreachable
+    print(f"Server error: {e}")
+```
+
+### SessionToken Dataclass
+
+```python
+@dataclass
+class SessionToken:
+    token: str                    # The JIT access token string
+    tool: str                     # Tool this token grants access to
+    expires_in_seconds: int       # Token validity period
+    remaining_budget_usd: float   # Budget remaining after this request
+```
+
+---
+
+## Security Controls
+
+### 1. Authentication
+
+Every request requires valid `agent_id` and `agent_secret`. Invalid credentials result in `401 Unauthorized`.
+
+```python
+# Server-side validation
+if agent_config.get("secret") != request.agent_secret:
+    raise HTTPException(status_code=401, detail="Authentication Failed")
+```
+
+### 2. Authorization (Tool Permissions)
+
+Agents can only access tools explicitly listed in their `allowed_tools`. Attempting to access other tools results in `403 Forbidden`.
+
+```python
+# Server-side validation
+tool_config = get_tool_config(agent_config, tool_name)
+if not tool_config:
+    raise HTTPException(status_code=403, detail="Permission Denied")
+```
+
+### 3. Context-Aware Security
+
+Before granting access, the server analyzes the `intent_description` for dangerous keywords. This prevents agents from performing destructive operations.
+
+```python
+# Example: Block SQL injection attempts
+blocked_keywords = ["delete", "drop", "truncate", "shutdown"]
+
+intent = "I want to DELETE all users from the database"
+# ❌ BLOCKED - Contains "delete"
+
+intent = "I want to read the latest users"
+# ✅ ALLOWED - No dangerous keywords
+```
+
+**How it works:**
+1. Each tool can define a list of `blocked_keywords`
+2. When an agent requests access, their `intent_description` is scanned
+3. If any blocked keyword is found (case-insensitive), access is denied
+4. The specific keyword is logged for audit purposes
+
+### 4. Budget Enforcement (Denial of Wallet Prevention)
+
+Each agent has a `max_hourly_budget_usd`. Every tool has a `cost_per_call_usd`. The server tracks spending and blocks requests that would exceed the budget.
+
+```python
+# Example: intern_bot_02 with $1.00 budget
+# google_search costs $0.01 per call
+
+# Calls 1-100: ✅ APPROVED (total: $1.00)
+# Call 101:    ❌ BLOCKED (would exceed $1.00)
+```
+
+**Budget Reset:**
+- Budgets reset every hour (configurable)
+- Reset is triggered on first request after the window expires
+
+---
+
+## Request Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Zero Trust Request Flow                          │
+└─────────────────────────────────────────────────────────────────────┘
+
+Agent Request
+     │
+     ▼
+┌─────────────────┐
+│ 1. AUTHENTICATE │──── Invalid? ────▶ 401 Unauthorized
+│    Check creds  │
+└────────┬────────┘
+         │ Valid
+         ▼
+┌─────────────────┐
+│ 2. AUTHORIZE    │──── Not allowed? ─▶ 403 Forbidden
+│    Check tool   │
+└────────┬────────┘
+         │ Allowed
+         ▼
+┌─────────────────┐
+│ 3. CONTEXT      │──── Dangerous? ───▶ 403 Context Alert
+│    Check intent │
+└────────┬────────┘
+         │ Safe
+         ▼
+┌─────────────────┐
+│ 4. BUDGET       │──── Exceeded? ────▶ 429 Too Many Requests
+│    Check spend  │
+└────────┬────────┘
+         │ Within limit
+         ▼
+┌─────────────────┐
+│ 5. APPROVE      │
+│    Issue token  │────────────────────▶ 200 OK + Token
+└─────────────────┘
+```
+
+---
+
+## Logging
+
+The server produces structured logs for all access decisions:
+
+```
+# Approved request
+2024-01-15 10:30:45 | INFO | [+] APPROVED: agent=research_bot_01, tool=openai_api, cost=$0.03, remaining=$4.97
+
+# Blocked - Context violation
+2024-01-15 10:30:46 | ERROR | [-] BLOCKED [Dangerous Intent]: agent=research_bot_01, tool=database_api, keyword='delete'
+2024-01-15 10:30:46 | ERROR |     Intent: "I want to DELETE the production table..."
+
+# Blocked - Budget exceeded
+2024-01-15 10:30:47 | WARNING | [-] BLOCKED [Budget Exceeded]: agent=intern_bot_02, current=$1.00, max=$1.00
+
+# Blocked - Authentication
+2024-01-15 10:30:48 | WARNING | [-] BLOCKED [Invalid Secret]: research_bot_01
+```
+
+---
+
+## Testing
+
+### Run the Validation Suite
+
+```bash
+python demo_context.py
+```
+
+### Test Cases Covered
+
+| Test | Description | Expected Result |
+|------|-------------|-----------------|
+| Context - Safe | Read intent with no dangerous keywords | ✅ Approved |
+| Context - DELETE | Intent containing "DELETE" | ❌ 403 Blocked |
+| Context - DROP | Intent containing "DROP" | ❌ 403 Blocked |
+| Permission - Allowed | Access to permitted tool | ✅ Approved |
+| Permission - Denied | Access to non-permitted tool | ❌ 403 Blocked |
+| Budget - Under | Requests within budget | ✅ Approved |
+| Budget - Over | Request exceeding budget | ❌ 429 Blocked |
+| Auth - Invalid Secret | Wrong password | ❌ 401 Blocked |
+| Auth - Unknown Agent | Non-existent agent | ❌ 401 Blocked |
+
+### Manual Testing with curl
+
+```bash
+# Successful request
+curl -X POST http://localhost:8000/request-access \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "research_bot_01",
+    "agent_secret": "secret_123",
+    "tool_name": "openai_api",
+    "intent_description": "Summarize the document"
+  }'
+
+# Blocked - Dangerous intent
+curl -X POST http://localhost:8000/request-access \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "research_bot_01",
+    "agent_secret": "secret_123",
+    "tool_name": "database_api",
+    "intent_description": "DELETE all records from users table"
+  }'
+
+# Check budget
+curl http://localhost:8000/spend/research_bot_01
+```
+
+---
+
+## Production Deployment
+
+### Recommended Enhancements
+
+1. **Real JWT Tokens**: Replace mock tokens with signed JWTs
+2. **Persistent Storage**: Replace in-memory `SPEND_TRACKER` with Redis
+3. **Rate Limiting**: Add request rate limits per agent
+4. **TLS/HTTPS**: Enable encrypted communication
+5. **Secret Management**: Use environment variables or vault for secrets
+6. **Audit Logging**: Send logs to SIEM for compliance
+
+### Environment Variables
+
+```bash
+export AGENTSUDO_HOST=0.0.0.0
+export AGENTSUDO_PORT=8000
+export AGENTSUDO_POLICIES_PATH=/etc/agentsudo/policies.yaml
+export AGENTSUDO_LOG_LEVEL=INFO
+```
+
+### Docker Deployment
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY policies.yaml server.py agent_sudo.py ./
+
+EXPOSE 8000
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+---
+
+## License
+
+MIT License - See LICENSE file for details.
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Submit a pull request
+
+---
+
+## Support
+
+- **Issues**: GitHub Issues
+- **Documentation**: This README
+- **Security**: Report vulnerabilities privately
+
+---
+
+<p align="center">
+  <strong>AgentSudo</strong> - Because AI Agents Need Guardrails Too
+</p>

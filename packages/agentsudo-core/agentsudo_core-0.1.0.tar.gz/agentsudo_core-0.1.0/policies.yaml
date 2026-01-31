@@ -1,0 +1,105 @@
+# AgentSudo - Zero Trust Policy Configuration
+# Just-In-Time (JIT) Access Control for AI Agents
+# Human-in-the-Loop (HITL) Approval Workflows
+# =================================================
+
+agents:
+  # Research Bot - Higher budget, more tool access
+  research_bot_01:
+    secret: "secret_123"
+    max_hourly_budget_usd: 5.00
+    description: "Primary research agent with broad tool access"
+    sponsor: "admin@company.com"  # Human owner for accountability
+    
+    allowed_tools:
+      - name: "openai_api"
+        cost_per_call_usd: 0.03
+        permission: "invoke"
+        description: "OpenAI GPT-4 API calls"
+        blocked_keywords: []
+        
+      - name: "google_search"
+        cost_per_call_usd: 0.01
+        permission: "invoke"
+        description: "Google Search API"
+        blocked_keywords: []
+        
+      - name: "database_api"
+        cost_per_call_usd: 0.00
+        permission: "read_only"
+        description: "Database read access"
+        blocked_keywords:
+          - "delete"
+          - "drop"
+          - "truncate"
+          - "shutdown"
+          - "alter"
+          - "exec"
+          - "execute"
+          - "update"
+          - "insert"
+
+      # NEW: Human-in-the-Loop conditional approval
+      - name: "stripe_refund"
+        cost_per_call_usd: 0.00
+        permission: "conditional"
+        description: "Process customer refunds via Stripe"
+        require_approval: true
+        approval_threshold_usd: 50.00  # Auto-approve < $50, human review >= $50
+        approvers:
+          - "finance@company.com"
+          - "manager@company.com"
+        blocked_keywords:
+          - "fraud"
+          - "chargeback"
+
+  # Intern Bot - Limited budget, restricted tools
+  intern_bot_02:
+    secret: "intern_secret_456"
+    max_hourly_budget_usd: 1.00
+    description: "Junior agent with limited access"
+    sponsor: "supervisor@company.com"
+    
+    allowed_tools:
+      - name: "google_search"
+        cost_per_call_usd: 0.01
+        permission: "invoke"
+        description: "Google Search API only"
+        blocked_keywords:
+          - "hack"
+          - "exploit"
+          - "vulnerability"
+          - "password"
+          - "credential"
+
+  # Test Bot - For development and testing purposes
+  test_bot:
+    secret: "secret_123"
+    max_hourly_budget_usd: 10.00
+    allowed_tools:
+      - name: "openai_api"
+        permission: "invoke"
+        cost_per_call_usd: 0.03
+        blocked_keywords: []
+      - name: "stripe_refund"
+        permission: "conditional"
+        require_approval: true
+        approval_threshold_usd: 50.00
+        cost_per_call_usd: 0.00
+        approvers:
+          - "admin@test.com"
+        blocked_keywords:
+          - "fraud"
+          - "chargeback"
+
+# Global settings
+settings:
+  token_expiry_seconds: 300  # 5 minutes JIT access
+  budget_reset_interval: "hourly"
+  log_level: "INFO"
+  enforce_context_check: true
+  
+  # Human-in-the-Loop settings
+  approval_timeout_hours: 24
+  auto_deny_on_timeout: true
+  notify_sponsor_on_block: true
