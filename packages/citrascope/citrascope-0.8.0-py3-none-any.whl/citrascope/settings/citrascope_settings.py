@@ -1,0 +1,161 @@
+"""CitraScope settings class using JSON-based configuration."""
+
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+import platformdirs
+
+# Application constants for platformdirs
+# Defined before imports to avoid circular dependency
+APP_NAME = "citrascope"
+APP_AUTHOR = "citra-space"
+
+from citrascope.constants import DEFAULT_API_PORT, DEFAULT_WEB_PORT, PROD_API_HOST
+from citrascope.logging import CITRASCOPE_LOGGER
+from citrascope.settings.settings_file_manager import SettingsFileManager
+
+
+class CitraScopeSettings:
+    """Settings for CitraScope loaded from JSON configuration file."""
+
+    def __init__(self, web_port: int = DEFAULT_WEB_PORT):
+        """Initialize settings from JSON config file.
+
+        Args:
+            web_port: Port for web interface (default: 24872) - bootstrap option only
+        """
+        self.config_manager = SettingsFileManager()
+
+        # Load configuration from file
+        config = self.config_manager.load_config()
+
+        # Application data directories
+        self._images_dir = Path(platformdirs.user_data_dir(APP_NAME, appauthor=APP_AUTHOR)) / "images"
+
+        # API Settings (all loaded from config file)
+        self.host: str = config.get("host", PROD_API_HOST)
+        self.port: int = config.get("port", DEFAULT_API_PORT)
+        self.use_ssl: bool = config.get("use_ssl", True)
+        self.personal_access_token: str = config.get("personal_access_token", "")
+        self.telescope_id: str = config.get("telescope_id", "")
+
+        # Hardware adapter selection
+        self.hardware_adapter: str = config.get("hardware_adapter", "")
+
+        # Hardware adapter-specific settings stored as nested dict per adapter
+        # Format: {"adapter_name": {"setting_key": value, ...}, ...}
+        self._all_adapter_settings: Dict[str, Dict[str, Any]] = config.get("adapter_settings", {})
+
+        # Current adapter's settings slice
+        self.adapter_settings: Dict[str, Any] = self._all_adapter_settings.get(self.hardware_adapter, {})
+
+        # Runtime settings (all loaded from config file, configurable via web UI)
+        self.log_level: str = config.get("log_level", "INFO")
+        self.keep_images: bool = config.get("keep_images", False)
+
+        # Web port: CLI-only, never loaded from or saved to config file
+        self.web_port: int = web_port
+
+        # Task retry configuration
+        self.max_task_retries: int = config.get("max_task_retries", 3)
+        self.initial_retry_delay_seconds: int = config.get("initial_retry_delay_seconds", 30)
+        self.max_retry_delay_seconds: int = config.get("max_retry_delay_seconds", 300)
+
+        # Log file configuration
+        self.file_logging_enabled: bool = config.get("file_logging_enabled", True)
+        self.log_retention_days: int = config.get("log_retention_days", 30)
+
+        # Autofocus configuration (top-level/global settings)
+        self.scheduled_autofocus_enabled: bool = config.get("scheduled_autofocus_enabled", False)
+        self.autofocus_interval_minutes: int = config.get("autofocus_interval_minutes", 60)
+        self.last_autofocus_timestamp: Optional[int] = config.get("last_autofocus_timestamp")
+
+        # Validate autofocus interval
+        if (
+            not isinstance(self.autofocus_interval_minutes, int)
+            or self.autofocus_interval_minutes < 1
+            or self.autofocus_interval_minutes > 1439
+        ):
+            CITRASCOPE_LOGGER.warning(
+                f"Invalid autofocus_interval_minutes ({self.autofocus_interval_minutes}). Setting to default 60 minutes."
+            )
+            self.autofocus_interval_minutes = 60
+
+        # Time synchronization monitoring configuration (always enabled)
+        self.time_check_interval_minutes: int = config.get("time_check_interval_minutes", 5)
+        self.time_offset_pause_ms: float = config.get("time_offset_pause_ms", 500.0)
+
+    def get_images_dir(self) -> Path:
+        """Get the path to the images directory.
+
+        Returns:
+            Path object pointing to the images directory.
+        """
+        return self._images_dir
+
+    def ensure_images_directory(self) -> None:
+        """Create images directory if it doesn't exist."""
+        if not self._images_dir.exists():
+            self._images_dir.mkdir(parents=True)
+
+    def is_configured(self) -> bool:
+        """Check if minimum required configuration is present.
+
+        Returns:
+            True if personal_access_token, telescope_id, and hardware_adapter are set.
+        """
+        return bool(self.personal_access_token and self.telescope_id and self.hardware_adapter)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert settings to dictionary for serialization.
+
+        Returns:
+            Dictionary of all settings (excluding runtime-only settings like web_port).
+        """
+        return {
+            "host": self.host,
+            "port": self.port,
+            "use_ssl": self.use_ssl,
+            "personal_access_token": self.personal_access_token,
+            "telescope_id": self.telescope_id,
+            "hardware_adapter": self.hardware_adapter,
+            "adapter_settings": self._all_adapter_settings,
+            "log_level": self.log_level,
+            "keep_images": self.keep_images,
+            "max_task_retries": self.max_task_retries,
+            "initial_retry_delay_seconds": self.initial_retry_delay_seconds,
+            "max_retry_delay_seconds": self.max_retry_delay_seconds,
+            "file_logging_enabled": self.file_logging_enabled,
+            "log_retention_days": self.log_retention_days,
+            "scheduled_autofocus_enabled": self.scheduled_autofocus_enabled,
+            "autofocus_interval_minutes": self.autofocus_interval_minutes,
+            "last_autofocus_timestamp": self.last_autofocus_timestamp,
+            "time_check_interval_minutes": self.time_check_interval_minutes,
+            "time_offset_pause_ms": self.time_offset_pause_ms,
+        }
+
+    def save(self) -> None:
+        """Save current settings to JSON config file."""
+        # Update nested dict with current adapter's settings before saving
+        if self.hardware_adapter:
+            self._all_adapter_settings[self.hardware_adapter] = self.adapter_settings
+
+        self.config_manager.save_config(self.to_dict())
+        CITRASCOPE_LOGGER.info(f"Configuration saved to {self.config_manager.get_config_path()}")
+
+    def update_and_save(self, config: Dict[str, Any]) -> None:
+        """Update settings from dict and save, preserving other adapters' settings.
+
+        Args:
+            config: Configuration dict with flat adapter_settings for current adapter.
+        """
+        # Remove runtime-only settings that should never be persisted
+        config.pop("web_port", None)
+
+        # Nest incoming adapter_settings under hardware_adapter key
+        adapter = config.get("hardware_adapter", self.hardware_adapter)
+        if adapter:
+            self._all_adapter_settings[adapter] = config.get("adapter_settings", {})
+        config["adapter_settings"] = self._all_adapter_settings
+
+        self.config_manager.save_config(config)
