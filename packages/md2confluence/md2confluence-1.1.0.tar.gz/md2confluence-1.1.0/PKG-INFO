@@ -1,0 +1,216 @@
+Metadata-Version: 2.4
+Name: md2confluence
+Version: 1.1.0
+Summary: Sync Markdown documentation to Confluence Cloud
+License: MIT
+Project-URL: Repository, https://pypi.org/project/md2confluence/
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: requests>=2.32.0
+Dynamic: license-file
+
+# md2confluence
+
+<p align="center">
+  <img src="img/MD2C.png" alt="md2confluence" width="400">
+</p>
+
+[![Python](https://img.shields.io/badge/Python-3.9+-blue?style=flat-square&logo=python)](https://www.python.org/)
+[![PyPI](https://img.shields.io/pypi/v/md2confluence?style=flat-square&logo=pypi)](https://pypi.org/project/md2confluence/)
+[![Version](https://img.shields.io/badge/version-1.1.0-green?style=flat-square)](https://pypi.org/project/md2confluence/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+
+A Python tool to sync Markdown documentation to Confluence Cloud.
+
+## Features
+
+- **Markdown to Confluence conversion** - Headers, lists, tables, code blocks, info panels, task lists, and more
+- **Front-matter support** - Per-document settings via YAML/JSON front-matter
+- **Emoji shortcodes** - `:smile:` → 😄, `:rocket:` → 🚀
+- **Subscript/superscript** - `H~2~O` → H₂O, `x^2^` → x²
+- **Page labels** - Set Confluence labels via front-matter tags
+- **Image handling** - Automatically uploads local images as attachments
+- **Local output mode** - Generate Confluence Storage Format files without API calls
+- **Config-driven** - Define document mappings in a simple config file
+- **Dry-run mode** - Preview changes before syncing
+- **Retry logic** - Exponential backoff for transient failures
+- **Rate limiting** - Avoid API throttling
+
+## Installation
+
+```bash
+# From PyPI (recommended)
+pip install md2confluence
+
+# For development
+git clone <repository-url>
+cd md2confluence
+pip install -e .
+```
+
+## Dependencies
+
+- Python 3.9+
+- `requests` library (installed automatically)
+
+## Quick Start
+
+1. **Create an API token** (see [Authentication](#authentication) below)
+
+2. **Set environment variables:**
+
+   ```bash
+   export CONFLUENCE_API_TOKEN="your-api-token"
+   export CONFLUENCE_USER_EMAIL="your-email@example.com"
+   ```
+
+3. **Create a config file** (`.confluence-sync.conf`):
+
+   ```bash
+   CONFLUENCE_BASE_URL="https://your-domain.atlassian.net/wiki"
+   CONFLUENCE_SPACE_KEY="DOCS"
+   CONFLUENCE_TECH_PARENT_ID="123456789"
+   
+   # Document mappings: "Title|path/to/file.md|parent_page_id"
+   CONFLUENCE_DOC_README="README|README.md|${CONFLUENCE_TECH_PARENT_ID}"
+   ```
+
+4. **Run the sync:**
+
+   ```bash
+   md2confluence
+   ```
+
+## Usage
+
+```bash
+# Sync all configured documents
+md2confluence
+
+# Dry-run (preview without changes)
+md2confluence --dry-run
+
+# List configured documents
+md2confluence --list
+
+# Verify config and connectivity
+md2confluence --verify
+
+# Sync a single document
+md2confluence --single "Page Title" path/to/doc.md parent_page_id
+
+# Convert markdown to Confluence format (stdout)
+echo "# Hello" | md2confluence --stdin
+
+# Local output (generate .csf files without API calls)
+md2confluence --local ./output
+```
+
+## Authentication
+
+### Creating an API Token
+
+1. Go to [Atlassian API Tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
+2. Click **Create API token**
+3. Enter a label (e.g., "md2confluence") and click **Create**
+4. Copy the token immediately (you won't see it again)
+
+### Required Permissions
+
+The user account associated with the API token needs:
+
+- **Space permissions:**
+  - View space
+  - Add pages
+  - Update pages
+  - Add attachments
+
+- **Page permissions:**
+  - View, Edit on target pages/parent pages
+
+For organization-managed accounts, ensure the user has appropriate Confluence access in your Atlassian admin settings.
+
+### Auth Modes
+
+| Mode   | Variables Required                               | Use Case                       |
+| ------ | ------------------------------------------------ | ------------------------------ |
+| Basic  | `CONFLUENCE_USER_EMAIL` + `CONFLUENCE_API_TOKEN` | Standard Atlassian Cloud       |
+| Bearer | `CONFLUENCE_API_TOKEN` only                      | OAuth tokens, service accounts |
+
+Auth mode is auto-detected based on whether `CONFLUENCE_USER_EMAIL` is set.
+
+## Configuration
+
+See `confluence-sync.conf.example` for all available options.
+
+### Document Mappings
+
+Define documents to sync using `CONFLUENCE_DOC_*` variables:
+
+```bash
+CONFLUENCE_DOC_MYPAGE="Page Title|path/to/file.md|parent_page_id"
+```
+
+### Edge Case Handling
+
+| Option                             | Values                   | Default     |
+| ---------------------------------- | ------------------------ | ----------- |
+| `CONFLUENCE_MISSING_FILE_BEHAVIOR` | skip, fail               | skip        |
+| `CONFLUENCE_IMAGE_FAILURE_BEHAVIOR`| placeholder, skip, fail  | placeholder |
+| `CONFLUENCE_TITLE_SPECIAL_CHARS`   | sanitize, encode, fail   | sanitize    |
+
+## Front-Matter
+
+Documents can include YAML or JSON front-matter to override settings:
+
+```yaml
+---
+title: Custom Page Title
+tags: [documentation, api, v2]
+space: DOCS
+parent_id: "123456789"
+add_disclaimer: false
+max_image_width: 600
+synchronized: true
+---
+
+# Document content starts here
+```
+
+### Supported Front-Matter Fields
+
+| Field                    | Type    | Description                    |
+| ------------------------ | ------- | ------------------------------ |
+| `title`                  | string  | Override page title            |
+| `tags` / `labels`        | array   | Confluence page labels         |
+| `space` / `space_key`    | string  | Target Confluence space        |
+| `parent_id` / `parent`   | string  | Parent page ID                 |
+| `add_disclaimer`         | boolean | Add auto-generated notice      |
+| `max_image_width`        | integer | Image width constraint (px)    |
+| `image_failure_behavior` | string  | Override error handling        |
+| `title_special_chars`    | string  | Override title sanitization    |
+| `synchronized` / `sync`  | boolean | Set `false` to skip document   |
+
+Front-matter settings take precedence over config file and environment variables.
+
+## Markdown Support
+
+- Headers (h1-h6)
+- Bold, italic, strikethrough
+- Subscript (`~text~`) and superscript (`^text^`)
+- Ordered and unordered lists
+- Nested lists
+- Task lists (checkboxes)
+- Tables
+- Fenced code blocks with syntax highlighting
+- Inline code
+- Links (inline and reference-style)
+- Images (uploaded as attachments)
+- Blockquotes → Confluence panels (Note/Warning/Tip/Info)
+- Horizontal rules
+- Emoji shortcodes (`:smile:`, `:rocket:`, `:thumbsup:`, etc.)
+
+## License
+
+MIT
