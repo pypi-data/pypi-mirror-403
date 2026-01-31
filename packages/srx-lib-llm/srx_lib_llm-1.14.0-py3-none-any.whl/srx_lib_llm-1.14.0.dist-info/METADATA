@@ -1,0 +1,330 @@
+Metadata-Version: 2.1
+Name: srx-lib-llm
+Version: 1.14.0
+Summary: LLM helpers for SRX services: ChatOpenAI wrapper, tool base, Tavily tool, OpenAI Batch API, and infrastructure-agnostic batch state management
+Author-email: SRX <dev@srx.id>
+Requires-Python: >=3.12
+Requires-Dist: httpx<1,>=0.27.0
+Requires-Dist: langchain-community>=0.4.1
+Requires-Dist: langchain-core>=1.0.5
+Requires-Dist: langchain-openai>=1.0.3
+Requires-Dist: langchain>=1.0.7
+Requires-Dist: langfuse<4,>=3.8.0
+Requires-Dist: langgraph>=1.0.3
+Requires-Dist: openai<3,>=2.6.1
+Requires-Dist: tavily-python<0.8,>=0.7.13
+Provides-Extra: dev
+Requires-Dist: pytest-asyncio<1,>=0.23.0; extra == 'dev'
+Requires-Dist: pytest<9,>=8.0.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# srx-lib-llm
+
+LLM helpers for SRX services built on LangChain.
+
+What it includes:
+- `responses_chat(prompt, cache=False)`: simple text chat via OpenAI Responses API
+- Tool strategy base and registry
+- Tavily search tool strategy
+- Structured output helpers: build Pydantic model from JSON Schema and generate structured outputs via LLM
+- Request models, e.g. `DynamicStructuredOutputRequest`
+- **OpenAI Batch API service**: comprehensive wrapper for asynchronous batch processing with 50% cost savings
+
+Designed to work with official OpenAI by default, with opt-in support for
+OpenAI-compatible endpoints (e.g., Qwen) via environment configuration.
+
+## Install
+
+PyPI (public):
+
+- `pip install srx-lib-llm`
+
+uv (pyproject):
+```
+[project]
+dependencies = ["srx-lib-llm>=0.1.0"]
+```
+
+## Usage
+
+```
+from srx_lib_llm import responses_chat
+text = await responses_chat("Hello there", cache=True)
+```
+
+### OpenAI-Compatible Endpoints (Qwen Example)
+
+Set a custom base URL and model to use OpenAI-compatible providers:
+
+```
+export OPENAI_API_KEY="sk-..."
+export OPENAI_BASE_URL="https://d3hip1bjwcdu0p.cloudfront.net/api"
+export OPENAI_MODEL="ds-news-aggregator"
+export OPENAI_API_MODE="chat"
+```
+
+Then call existing helpers without code changes:
+
+```
+from srx_lib_llm import responses_chat
+text = await responses_chat("Hello there", cache=True)
+```
+
+Structured output works the same way (assuming the provider supports
+OpenAI-compatible JSON schema output):
+
+```
+from srx_lib_llm import extract_structured
+
+schema = {
+  "type": "object",
+  "properties": {"summary": {"type": "string"}},
+  "required": ["summary"]
+}
+
+result = await extract_structured(
+    text="Summarize this passage...", json_schema=schema, schema_name="Summary"
+)
+print(result.model_dump())
+```
+
+Notes:
+- `extract_structured_gpt51` requires OpenAI Responses API (GPT-5.* only).
+- The OpenAI Batch API helpers are OpenAI-specific and may not work elsewhere.
+
+Structured output from JSON Schema:
+```
+from srx_lib_llm import StructuredOutputGenerator, build_model_from_schema, preprocess_json_schema
+
+json_schema = {
+  "type": "object",
+  "properties": {
+    "title": {"type": "string"},
+    "score": {"type": "number"}
+  },
+  "required": ["title"]
+}
+
+gen = StructuredOutputGenerator()
+model = build_model_from_schema("MyOutput", preprocess_json_schema(json_schema))
+result = await gen.generate_from_model("Give me a title and score", model)
+print(result.model_dump())
+```
+
+All-in-one extraction:
+```
+from srx_lib_llm import extract_structured
+
+result = await extract_structured(
+    text="Analyze this text...", json_schema=my_schema, schema_name="MyOutput"
+)
+print(result.model_dump())
+```
+
+GPT-5.1 with medium reasoning effort (recommended for complex analysis):
+```
+from srx_lib_llm import extract_structured_gpt51
+
+result = await extract_structured_gpt51(
+    text="Analyze this HR assessment document...",
+    json_schema=competency_schema,
+    schema_name="CompetencyAssessment",
+    model="gpt-5.1-2025-11-13",
+    reasoning_effort="medium",
+    system="You are an expert competency assessor..."
+)
+print(result.model_dump())
+```
+
+Back-compat helpers and request models:
+```
+from srx_lib_llm import create_dynamic_schema, DynamicStructuredOutputRequest
+
+schema_model = create_dynamic_schema("MyOutput", json_schema)
+payload = DynamicStructuredOutputRequest(text="...", json_schema=json_schema)
+```
+
+Tools:
+```
+from srx_lib_llm.tools import ToolStrategyBase, register_strategy, get_strategies
+from srx_lib_llm.tools.tavily import TavilyToolStrategy
+
+register_strategy(TavilyToolStrategy())
+strategies = get_strategies()
+```
+
+### Optional Langfuse Tracing
+
+Set Langfuse environment variables to enable tracing for all LangChain and LangGraph flows. Without these values the library runs exactly as before.
+
+```
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+# Optional, defaults to https://cloud.langfuse.com
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
+```
+
+When available, Langfuse's `CallbackHandler` is attached automatically to:
+- `responses_chat`
+- Structured output helpers
+- LangGraph agents created through `ToolStrategyBase`
+
+### OpenAI Batch API
+
+Process large volumes of requests asynchronously with 50% cost savings.
+
+**Key Features:**
+- Supports CSV, JSONL, and NDJSON data files
+- Smart prompt handling: row-level or global with variable interpolation
+- Uses `OPENAI_MODEL` env var for model selection
+- Automatically handles file format detection
+- Track batch progress and retrieve results
+
+**Basic Usage with CSV Data:**
+
+```python
+from srx_lib_llm import OpenAIBatchService, BatchPayload, BatchEndpoint
+
+# Your CSV file: data.csv
+# name,age,city
+# Alice,30,NYC
+# Bob,25,SF
+
+service = OpenAIBatchService()
+
+# Create payload with global prompt
+payload = BatchPayload(
+    prompt="Analyze this person: {name}, age {age}, from {city}. What can you infer?",
+    model=None,  # Uses OPENAI_MODEL env var
+    endpoint=BatchEndpoint.CHAT_COMPLETIONS,
+    system_message="You are a data analyst.",
+    temperature=0.7
+)
+
+# Create batch from local file
+mapping = await service.create_batch_from_file(
+    file_path="./data.csv",
+    payload=payload
+)
+
+# Or from URL
+mapping = await service.create_batch_from_url(
+    url="https://example.com/data.csv",
+    payload=payload
+)
+
+print(f"Batch created: {mapping.batch_id}")
+```
+
+**Row-Level Prompts (Prompt Column Wins):**
+
+```python
+# Your CSV file: custom_prompts.csv
+# custom_id,prompt,context
+# req-1,Summarize this: foo bar baz,important
+# req-2,Translate to Spanish: hello world,casual
+
+# Row-level 'prompt' column takes precedence over global prompt
+payload = BatchPayload(
+    # No need for global prompt if data has 'prompt' column
+    model="gpt-4",  # Override OPENAI_MODEL env var
+    endpoint=BatchEndpoint.CHAT_COMPLETIONS
+)
+
+mapping = await service.create_batch_from_file("./custom_prompts.csv", payload)
+```
+
+**From In-Memory Data:**
+
+```python
+data = [
+    {"name": "Alice", "question": "What is AI?"},
+    {"name": "Bob", "question": "Explain quantum computing"},
+]
+
+payload = BatchPayload(
+    prompt="Answer {name}'s question: {question}",
+    custom_id_prefix="answer"  # Generates answer-1, answer-2, etc.
+)
+
+mapping = await service.create_batch_from_data(data, payload)
+```
+
+**Check Status and Get Results:**
+
+```python
+# Check batch status
+info = await service.get_batch_status(mapping.batch_id)
+print(f"Status: {info.status}")
+print(f"Progress: {info.request_counts}")
+
+# Wait for completion (optional)
+info = await service.wait_for_completion(mapping.batch_id, poll_interval=60)
+
+# Get results
+results = await service.get_batch_results(mapping.batch_id)
+for result in results:
+    if result.response:
+        print(f"{result.custom_id}: {result.response['body']}")
+    elif result.error:
+        print(f"{result.custom_id}: ERROR - {result.error}")
+
+# Get errors separately (if any)
+errors = await service.get_batch_errors(mapping.batch_id)
+
+# Get batch mapping (tracks files)
+mapping = service.get_mapping(mapping.batch_id)
+print(f"Input: {mapping.input_path}")
+print(f"Output: {mapping.output_path}")
+```
+
+**Convenience Functions:**
+
+```python
+from srx_lib_llm import create_batch_from_url, create_batch_from_file, check_batch_status, BatchPayload
+
+# Quick batch from URL
+payload = BatchPayload(prompt="Analyze: {text}")
+mapping = await create_batch_from_url("https://example.com/data.csv", payload)
+
+# Quick batch from file
+mapping = await create_batch_from_file("./data.jsonl", payload)
+
+# Quick status check
+info = await check_batch_status(mapping.batch_id)
+```
+
+**Advanced Configuration:**
+
+```python
+payload = BatchPayload(
+    prompt="Process: {data}",
+    model="gpt-4-turbo",  # Override env var
+    endpoint=BatchEndpoint.CHAT_COMPLETIONS,
+    system_message="You are an expert analyst.",
+    temperature=0.5,
+    max_tokens=1000,
+    top_p=0.9,
+    frequency_penalty=0.5,
+    presence_penalty=0.5,
+    custom_id_prefix="analysis",
+    extra_body_params={"response_format": {"type": "json_object"}}  # Additional params
+)
+```
+
+## Environment Variables
+
+- `OPENAI_API_KEY` (required)
+- `OPENAI_MODEL` (optional, default: `gpt-4.1-nano`)
+- `OPENAI_BASE_URL` (optional, OpenAI-compatible providers)
+- `OPENAI_API_MODE` (optional, `responses` or `chat`; defaults to `chat` when `OPENAI_BASE_URL` is set)
+- `OPENAI_USE_RESPONSES_API` (optional, overrides `OPENAI_API_MODE`)
+- `TAVILY_API_KEY` (optional, for the Tavily tool)
+
+## Release
+
+Tag `vX.Y.Z` to publish to GitHub Packages via Actions.
+
+## License
+
+Proprietary © SRX
