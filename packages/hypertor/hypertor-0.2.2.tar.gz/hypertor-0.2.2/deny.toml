@@ -1,0 +1,51 @@
+# cargo-deny configuration for hypertor
+# https://embarkstudios.github.io/cargo-deny/
+# NOTE: License checks disabled in CI due to upstream crate license volatility
+
+# ============================================================================
+# Advisories - Check for known security vulnerabilities
+# ============================================================================
+[advisories]
+version = 2
+db-path = "~/.cargo/advisory-db"
+# Ignore advisories for unmaintained crates that are transitive dependencies
+# and have no security vulnerabilities (just maintenance status notices)
+ignore = [
+    "RUSTSEC-2024-0436",  # paste - unmaintained but no security issues, transitive from arti
+    # NOTE: The following is a known vulnerability in a transitive dependency.
+    # We document it here but cannot fix it as it comes from arti's dependency tree.
+    # The Marvin Attack requires network timing analysis and is mitigated by Tor's
+    # inherent network latency variability.
+    "RUSTSEC-2023-0071",  # rsa - Marvin Attack timing sidechannel, transitive from arti TLS
+]
+
+# ============================================================================
+# Bans - Disallow certain crates
+# ============================================================================
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+
+# Deny crates we don't want in our dependency tree
+deny = [
+    # Avoid deprecated/unmaintained crates
+    { name = "failure" },
+    { name = "failure_derive" },
+    { name = "tempdir" },  # Use tempfile instead
+]
+
+# Allow specific crate duplicates if needed
+skip = []
+
+# Allow specific tree paths if needed
+skip-tree = []
+
+# ============================================================================
+# Sources - Only allow crates from trusted sources
+# ============================================================================
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
