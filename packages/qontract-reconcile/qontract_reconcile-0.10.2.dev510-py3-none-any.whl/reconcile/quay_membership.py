@@ -1,0 +1,237 @@
+import logging
+import sys
+from collections.abc import Sequence
+from typing import Any
+
+from reconcile.gql_definitions.quay_membership import quay_membership
+from reconcile.gql_definitions.quay_membership.quay_membership import (
+    BotV1,
+    ExternalUserV1,
+    PermissionQuayOrgTeamV1,
+    UserV1,
+)
+from reconcile.quay_base import OrgKey, QuayApiStore
+from reconcile.status import ExitCodes
+from reconcile.utils import (
+    expiration,
+    gql,
+)
+from reconcile.utils.aggregated_list import (
+    Action,
+    AggregatedDiffRunner,
+    AggregatedList,
+    RunnerError,
+)
+from reconcile.utils.quay_api import QuayTeamNotFoundError
+
+QONTRACT_INTEGRATION = "quay-membership"
+
+
+def get_permissions_for_quay_membership() -> list[PermissionQuayOrgTeamV1]:
+    query_data = quay_membership.query(query_func=gql.get_api().query)
+
+    if not query_data.permissions:
+        return []
+    return [p for p in query_data.permissions if isinstance(p, PermissionQuayOrgTeamV1)]
+
+
+def process_permission(permission: PermissionQuayOrgTeamV1) -> dict[str, Any]:
+    """Returns a new permission object with the right keys
+
+    State needs these fields: service, org, team.
+
+    But the input (coming from QUAY_ORG_QUERY) will have:
+    service, quayOrg, team
+    """
+
+    return {
+        "service": permission.service,
+        "team": permission.team,
+        "org": (
+            permission.quay_org.instance.name,
+            permission.quay_org.name,
+        ),
+    }
+
+
+def fetch_current_state(quay_api_store: QuayApiStore) -> AggregatedList:
+    state = AggregatedList()
+
+    for org_key, org_data in quay_api_store.items():
+        teams = org_data["teams"]
+        if not teams:
+            continue
+
+        quay_api = org_data["api"]
+        for team in teams:
+            try:
+                members = quay_api.list_team_members(team)
+            except QuayTeamNotFoundError:
+                logging.warning(
+                    "Attempted to list members for team %s in "
+                    "org %s/%s, but it doesn't exist",
+                    team,
+                    org_key.instance,
+                    org_key.org_name,
+                )
+            else:
+                # Teams are only added to the state if they exist so that
+                # there is a proper diff between the desired and current state.
+                # Use tuple format (instance, org_name) to match desired state format
+                state.add(
+                    {
+                        "service": "quay-membership",
+                        "org": (org_key.instance, org_key.org_name),
+                        "team": team,
+                    },
+                    members,
+                )
+    return state
+
+
+def get_usernames(users: Sequence[UserV1 | BotV1 | ExternalUserV1]) -> list[str]:
+    return [u.quay_username for u in users if u.quay_username]
+
+
+def fetch_desired_state() -> AggregatedList:
+    permissions = get_permissions_for_quay_membership()
+    state = AggregatedList()
+
+    for permission in permissions:
+        p = process_permission(permission)
+        members: list[str] = []
+        for role in expiration.filter(permission.roles):
+            members += (
+                get_usernames(role.users)
+                + get_usernames(role.bots)
+                + get_usernames(role.external_users)
+            )
+
+        state.add(p, members)
+
+    return state
+
+
+class RunnerAction:
+    def __init__(self, dry_run: bool, quay_api_store: QuayApiStore):
+        self.dry_run = dry_run
+        self.quay_api_store = quay_api_store
+
+    def add_to_team(self) -> Action:
+        label = "add_to_team"
+
+        def action(params: dict, items: list) -> bool:
+            org = params["org"]
+            team = params["team"]
+            # Convert org tuple (instance, org_name) to OrgKey for lookup
+            org_key = (
+                OrgKey(org[0], org[1])
+                if isinstance(org, tuple)
+                else OrgKey("quay.io", org)
+            )
+            org_data = self.quay_api_store[org_key]
+            quay_api = org_data["api"]
+
+            missing_users = False
+            for member in items:
+                logging.info([label, member, org, team])
+                user_exists = quay_api.user_exists(member)
+                if user_exists:
+                    if not self.dry_run:
+                        quay_api.add_user_to_team(member, team)
+                else:
+                    missing_users = True
+                    logging.error(f"quay user {member} does not exist.")
+
+            # This will be evaluated by AggregatedDiffRunner.run(). The happy
+            # case is to return True: no missing users
+            return not missing_users
+
+        return action
+
+    def create_team(self) -> Action:
+        """
+        Create an empty team in Quay. This method avoids adding users to the
+        new team. add_to_team() will handle updating the member list the
+        next time run() is executed, while keeping this action very simple.
+        """
+        label = "create_team"
+
+        def action(params: dict, items: list) -> bool:
+            org = params["org"]
+            team = params["team"]
+            # Convert org tuple (instance, org_name) to OrgKey for lookup
+            org_key = (
+                OrgKey(org[0], org[1])
+                if isinstance(org, tuple)
+                else OrgKey("quay.io", org)
+            )
+            org_data = self.quay_api_store[org_key]
+
+            # Ensure all quay org/teams are declared as dependencies in a
+            # `/dependencies/quay-org-1.yml` datafile.
+            if team not in org_data["teams"]:
+                raise RunnerError(
+                    f"Quay team {team} is not defined as a "
+                    f"managedTeam in the {org_key.org_name} org."
+                )
+
+            logging.info([label, org, team])
+
+            if not self.dry_run:
+                quay_api = org_data["api"]
+                quay_api.create_or_update_team(team)
+
+            return True
+
+        return action
+
+    def del_from_team(self) -> Action:
+        label = "del_from_team"
+
+        def action(params: dict, items: list) -> bool:
+            org = params["org"]
+            team = params["team"]
+            # Convert org tuple (instance, org_name) to OrgKey for lookup
+            org_key = (
+                OrgKey(org[0], org[1])
+                if isinstance(org, tuple)
+                else OrgKey("quay.io", org)
+            )
+            org_data = self.quay_api_store[org_key]
+
+            quay_api = org_data["api"]
+            if self.dry_run:
+                for member in items:
+                    logging.info([label, member, org, team])
+            else:
+                for member in items:
+                    logging.info([label, member, org, team])
+                    quay_api.remove_user_from_team(member, team)
+
+            return True
+
+        return action
+
+
+def run(dry_run: bool) -> None:
+    with QuayApiStore() as quay_api_store:
+        current_state = fetch_current_state(quay_api_store)
+        desired_state = fetch_desired_state()
+
+        # calculate diff
+        diff = current_state.diff(desired_state)
+        logging.debug("State diff: %s", diff)
+
+        # Run actions
+        runner_action = RunnerAction(dry_run, quay_api_store)
+        runner = AggregatedDiffRunner(diff)
+
+        runner.register("insert", runner_action.create_team())
+        runner.register("update-insert", runner_action.add_to_team())
+        runner.register("update-delete", runner_action.del_from_team())
+        runner.register("delete", runner_action.del_from_team())
+
+        status = runner.run()
+        if not status:
+            sys.exit(ExitCodes.ERROR)
