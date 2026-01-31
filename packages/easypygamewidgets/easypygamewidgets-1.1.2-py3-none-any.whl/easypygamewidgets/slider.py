@@ -1,0 +1,534 @@
+import math
+import time
+
+import pygame
+
+pygame.init()
+
+all_sliders = []
+
+
+class Slider:
+    def __init__(self, screen: "easypygamewidgets.Screen | None" = None, auto_size: bool = True, width: int = 180,
+                 height: int = 16,
+                 text: str = "easypygamewidgets Slider", start: int | float = 0,
+                 end: int | float = 100, initial_value: int = None, state: str = "enabled",
+                 top_left_corner_radius: int = 25,
+                 top_right_corner_radius: int = 25,
+                 bottom_left_corner_radius: int = 25,
+                 bottom_right_corner_radius: int = 25,
+                 dot_radius: int = None,
+                 max_extra_dot_radius: int = None,
+                 move_text_with_dot_radius: bool = False,
+                 active_unpressed_text_color: tuple = (255, 255, 255),
+                 disabled_unpressed_text_color: tuple = (150, 150, 150),
+                 active_hover_text_color: tuple = (255, 255, 255),
+                 disabled_hover_text_color: tuple = (150, 150, 150),
+                 active_pressed_text_color: tuple = (255, 255, 255),
+                 active_unpressed_used_background_color: tuple = (30, 30, 30),
+                 disabled_unpressed_used_background_color: tuple = (20, 20, 20),
+                 active_hover_used_background_color: tuple = (30, 30, 30),
+                 disabled_hover_used_background_color: tuple = (20, 20, 20),
+                 active_pressed_used_background_color: tuple = (30, 30, 30),
+                 active_unpressed_unused_background_color: tuple = (60, 60, 60),
+                 disabled_unpressed_unused_background_color: tuple = (30, 30, 30),
+                 active_hover_unused_background_color: tuple = (60, 60, 60),
+                 disabled_hover_unused_background_color: tuple = (30, 30, 30),
+                 active_pressed_unused_background_color: tuple = (60, 60, 60),
+                 active_unpressed_dot_color: tuple = (255, 255, 255),
+                 disabled_unpressed_dot_color: tuple = (150, 150, 150),
+                 active_hover_dot_color: tuple = (255, 255, 255),
+                 disabled_hover_dot_color: tuple = (150, 150, 150),
+                 active_pressed_dot_color: tuple = (200, 200, 200),
+                 active_unpressed_border_color: tuple = (100, 100, 100),
+                 disabled_unpressed_border_color: tuple = (60, 60, 60),
+                 active_hover_border_color: tuple = (150, 150, 150),
+                 disabled_hover_border_color: tuple = (60, 60, 60),
+                 active_pressed_border_color: tuple = (150, 150, 150),
+                 active_pressed_display_color: tuple = (190, 190, 190),
+                 active_hover_display_color: tuple = (190, 190, 190),
+                 active_unpressed_display_color: tuple = (190, 190, 190),
+                 disabled_hover_display_color: tuple = (150, 150, 150),
+                 disabled_unpressed_display_color: tuple = (150, 150, 150),
+                 border_width: int = 2,
+                 click_sound: str | pygame.mixer.Sound = None,
+                 hold_sound: str | pygame.mixer.Sound = None,
+                 drag_sound: str | pygame.mixer.Sound = None,
+                 release_sound: str | pygame.mixer.Sound = None,
+                 active_hover_cursor: pygame.cursors = None,
+                 disabled_hover_cursor: pygame.cursors = None,
+                 active_pressed_cursor: pygame.cursors = None,
+                 font: pygame.font.Font = pygame.font.Font(None, 38), alignment: str = "center",
+                 alignment_spacing: int = 20, click_command=None, hold_command=None, drag_command=None,
+                 release_command=None, show_value_when_pressed: bool = True,
+                 show_value_when_hovered: bool = True, show_value_when_unpressed: bool = False,
+                 show_value_when_disabled: bool = False, round_display_value: int = 0,
+                 show_full_rounding_of_whole_numbers: bool = False, trigger_hold_delay: int = 150):
+        if screen:
+            screen.add_widget(self)
+            self.screen = screen
+        else:
+            self.screen = None
+        self.auto_size = auto_size
+        self.width = width
+        self.height = height
+        self.text = text
+        self.start = start
+        self.end = end
+        self.state = state
+        self.start = start
+        self.end = end
+        self.value = min(max(initial_value or start, start), end)
+        self.top_left_corner_radius = top_left_corner_radius
+        self.top_right_corner_radius = top_right_corner_radius
+        self.bottom_left_corner_radius = bottom_left_corner_radius
+        self.bottom_right_corner_radius = bottom_right_corner_radius
+        if not dot_radius:
+            self.dot_radius = height // 2
+        else:
+            self.dot_radius = dot_radius
+        if not max_extra_dot_radius:
+            self.max_extra_dot_radius = self.dot_radius // 5 + 1
+        else:
+            self.max_extra_dot_radius = max_extra_dot_radius
+        self.move_text_with_dot_radius = move_text_with_dot_radius
+        self.active_unpressed_text_color = active_unpressed_text_color
+        self.disabled_unpressed_text_color = disabled_unpressed_text_color
+        self.active_hover_text_color = active_hover_text_color
+        self.disabled_hover_text_color = disabled_hover_text_color
+        self.active_pressed_text_color = active_pressed_text_color
+        self.active_unpressed_used_background_color = active_unpressed_used_background_color
+        self.disabled_unpressed_used_background_color = disabled_unpressed_used_background_color
+        self.active_hover_used_background_color = active_hover_used_background_color
+        self.disabled_hover_used_background_color = disabled_hover_used_background_color
+        self.active_pressed_used_background_color = active_pressed_used_background_color
+        self.active_unpressed_unused_background_color = active_unpressed_unused_background_color
+        self.disabled_unpressed_unused_background_color = disabled_unpressed_unused_background_color
+        self.active_hover_unused_background_color = active_hover_unused_background_color
+        self.disabled_hover_unused_background_color = disabled_hover_unused_background_color
+        self.active_pressed_unused_background_color = active_pressed_unused_background_color
+        self.active_unpressed_dot_color = active_unpressed_dot_color
+        self.disabled_unpressed_dot_color = disabled_unpressed_dot_color
+        self.active_hover_dot_color = active_hover_dot_color
+        self.disabled_hover_dot_color = disabled_hover_dot_color
+        self.active_pressed_dot_color = active_pressed_dot_color
+        self.active_unpressed_border_color = active_unpressed_border_color
+        self.disabled_unpressed_border_color = disabled_unpressed_border_color
+        self.active_hover_border_color = active_hover_border_color
+        self.disabled_hover_border_color = disabled_hover_border_color
+        self.active_pressed_border_color = active_pressed_border_color
+        self.active_pressed_display_color = active_pressed_display_color
+        self.active_hover_display_color = active_hover_display_color
+        self.active_unpressed_display_color = active_unpressed_display_color
+        self.disabled_hover_display_color = disabled_hover_display_color
+        self.disabled_unpressed_display_color = disabled_unpressed_display_color
+        self.border_width = border_width
+        if click_sound:
+            if isinstance(click_sound, pygame.mixer.Sound):
+                self.click_sound = click_sound
+            else:
+                self.click_sound = pygame.mixer.Sound(click_sound)
+        else:
+            self.click_sound = None
+        if hold_sound:
+            if isinstance(hold_sound, pygame.mixer.Sound):
+                self.hold_sound = hold_sound
+            else:
+                self.hold_sound = pygame.mixer.Sound(hold_sound)
+        else:
+            self.hold_sound = None
+        if drag_sound:
+            if isinstance(drag_sound, pygame.mixer.Sound):
+                self.drag_sound = drag_sound
+            else:
+                self.drag_sound = pygame.mixer.Sound(drag_sound)
+        else:
+            self.drag_sound = None
+        if release_sound:
+            if isinstance(release_sound, pygame.mixer.Sound):
+                self.release_sound = release_sound
+            else:
+                self.release_sound = pygame.mixer.Sound(release_sound)
+        else:
+            self.release_sound = None
+        cursor_input = {
+            "active_hover": active_hover_cursor,
+            "disabled_hover": disabled_hover_cursor,
+            "active_pressed": active_pressed_cursor
+        }
+        self.cursors = {}
+        for name, cursor in cursor_input.items():
+            if isinstance(cursor, pygame.cursors.Cursor):
+                self.cursors[name] = cursor
+            else:
+                if cursor is not None:
+                    print(
+                        f"No custom cursor is used for the slider {self.text} because it's not a pygame.cursors.Cursor object. ({cursor})")
+                self.cursors[name] = None
+        self.font = font
+        self.alignment = alignment
+        self.alignment_spacing = alignment_spacing
+        self.click_command = click_command
+        self.hold_command = hold_command
+        self.drag_command = drag_command
+        self.release_command = release_command
+        self.show_value_when_pressed = show_value_when_pressed
+        self.show_value_when_hovered = show_value_when_hovered
+        self.show_value_when_unpressed = show_value_when_unpressed
+        self.show_value_when_disabled = show_value_when_disabled
+        self.round_display_value = round_display_value
+        self.show_full_rounding_of_whole_numbers = show_full_rounding_of_whole_numbers
+        self.trigger_hold_delay = trigger_hold_delay
+        self.x = 0
+        self.y = font.render(text, True, (255, 255, 255)).get_height()
+        self.alive = True
+        self.pressed = False
+        self.rect = pygame.Rect(self.x, self.y, self.width, 60)
+        self.original_cursor = None
+        self.extra_dot_radius = 0
+        self.visible = True
+        self.pressed_before = False
+        self.last_value_update_time = 0
+        self.hold_sound_started = None
+        self.hold_sound_length = None
+        self.drag_sound_started = None
+        self.drag_sound_length = None
+
+        all_sliders.append(self)
+
+    def configure(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+        if 'x' in kwargs or 'y' in kwargs or 'width' in kwargs:
+            self.rect = pygame.Rect(self.x, self.y, self.width, 60)
+
+    def config(self, **kwargs):
+        self.configure(**kwargs)
+
+    def delete(self):
+        self.alive = False
+        if self in all_sliders:
+            all_sliders.remove(self)
+
+    def place(self, x: int, y: int):
+        self.x = x
+        self.y = y
+        self.rect = pygame.Rect(self.x, self.y, self.width, 60)
+        return self
+
+    def execute_click_command(self):
+        if self.click_command:
+            self.click_command()
+        return self
+
+    def execute_hold_command(self):
+        if self.hold_command:
+            self.hold_command()
+        return self
+
+    def execute_drag_command(self):
+        if self.drag_command:
+            self.drag_command()
+        return self
+
+    def execute_release_command(self):
+        if self.release_command:
+            self.release_command()
+        return self
+
+    def play_click_sound(self):
+        if self.click_sound:
+            self.click_sound.play()
+        return self
+
+    def play_hold_sound(self):
+        if self.hold_sound:
+            self.hold_sound.play()
+        return self
+
+    def play_drag_sound(self):
+        if self.drag_sound:
+            self.drag_sound.play()
+        return self
+
+    def play_release_sound(self):
+        if self.release_sound:
+            self.release_sound.play()
+        return self
+
+    def get(self):
+        return self.value
+
+    def set(self, value):
+        self.value = min(max(value, self.start), self.end)
+
+    def add_screen(self, screen):
+        self.screen = screen
+        if not self in screen.widgets:
+            screen.widgets.append(self)
+
+
+def get_screen_offset(widget):
+    if widget.screen:
+        return widget.screen.x, widget.screen.y
+    return 0, 0
+
+
+def draw(slider, surface: pygame.Surface):
+    if not slider.alive or not slider.visible:
+        return
+    mouse_pos = pygame.mouse.get_pos()
+    is_hovering = is_point_in_rounded_rect(slider, mouse_pos)
+    if slider.state == "enabled":
+        if slider.pressed:
+            text_color = slider.active_pressed_text_color
+            bg_color_used = slider.active_pressed_used_background_color
+            bg_color_unused = slider.active_pressed_unused_background_color
+            brd_color = slider.active_pressed_border_color
+            dot_color = slider.active_pressed_dot_color
+            display_color = slider.active_pressed_display_color
+        elif is_hovering:
+            text_color = slider.active_hover_text_color
+            bg_color_used = slider.active_hover_used_background_color
+            bg_color_unused = slider.active_hover_unused_background_color
+            brd_color = slider.active_hover_border_color
+            dot_color = slider.active_hover_dot_color
+            display_color = slider.active_hover_display_color
+        else:
+            text_color = slider.active_unpressed_text_color
+            bg_color_used = slider.active_unpressed_used_background_color
+            bg_color_unused = slider.active_unpressed_unused_background_color
+            brd_color = slider.active_unpressed_border_color
+            dot_color = slider.active_unpressed_dot_color
+            display_color = slider.active_unpressed_display_color
+    else:
+        if is_hovering:
+            text_color = slider.disabled_hover_text_color
+            bg_color_used = slider.disabled_hover_used_background_color
+            bg_color_unused = slider.disabled_hover_unused_background_color
+            brd_color = slider.disabled_hover_border_color
+            dot_color = slider.disabled_hover_dot_color
+            display_color = slider.disabled_hover_display_color
+        else:
+            text_color = slider.disabled_unpressed_text_color
+            bg_color_used = slider.disabled_unpressed_used_background_color
+            bg_color_unused = slider.disabled_unpressed_unused_background_color
+            brd_color = slider.disabled_unpressed_border_color
+            dot_color = slider.disabled_unpressed_dot_color
+            display_color = slider.disabled_unpressed_display_color
+
+    if is_hovering:
+        if slider.state == "enabled":
+            if slider.pressed:
+                cursor_key = "active_pressed"
+            else:
+                cursor_key = "active_hover"
+        else:
+            cursor_key = "disabled_hover"
+        target_cursor = slider.cursors.get(cursor_key)
+        if target_cursor:
+            current_cursor = pygame.mouse.get_cursor()
+            if current_cursor != target_cursor:
+                if slider.original_cursor is None:
+                    slider.original_cursor = current_cursor
+                pygame.mouse.set_cursor(target_cursor)
+    else:
+        if slider.original_cursor:
+            pygame.mouse.set_cursor(slider.original_cursor)
+            slider.original_cursor = None
+
+    if slider.auto_size:
+        temp_surf = slider.font.render(slider.text, True, text_color)
+        slider.width = temp_surf.get_width() + 40 + (slider.alignment_spacing - 20)
+        slider.rect = pygame.Rect(slider.x, slider.y, slider.width, slider.height)
+
+    offset_x, offset_y = get_screen_offset(slider)
+    draw_rect = slider.rect.move(offset_x, offset_y)
+
+    track_y = draw_rect.centery + 5
+    track_rect = pygame.Rect(draw_rect.x, track_y - (slider.height // 2), draw_rect.width, slider.height)
+    max_radius = min(track_rect.width, track_rect.height) // 2
+    tl = min(slider.top_left_corner_radius, max_radius)
+    tr = min(slider.top_right_corner_radius, max_radius)
+    bl = min(slider.bottom_left_corner_radius, max_radius)
+    br = min(slider.bottom_right_corner_radius, max_radius)
+    pygame.draw.rect(surface, bg_color_unused, track_rect, border_top_left_radius=tl, border_top_right_radius=tr,
+                     border_bottom_left_radius=bl, border_bottom_right_radius=br)
+    if slider.end - slider.start != 0:
+        pct = (slider.value - slider.start) / (slider.end - slider.start)
+    else:
+        pct = 0
+    pct = max(0, min(1, pct))
+    used_width = int(track_rect.width * pct)
+    if used_width > 0:
+        clip_surf = pygame.Surface(track_rect.size, pygame.SRCALPHA)
+        mask_rect = pygame.Rect(0, 0, track_rect.width, track_rect.height)
+        pygame.draw.rect(clip_surf, (255, 255, 255), mask_rect, border_top_left_radius=tl,
+                         border_bottom_left_radius=bl, border_top_right_radius=tr,
+                         border_bottom_right_radius=br)
+        used_fill_rect = pygame.Rect(0, 0, used_width, track_rect.height)
+        fill_surf = pygame.Surface(track_rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(fill_surf, bg_color_used, used_fill_rect)
+        clip_surf.blit(fill_surf, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+        surface.blit(clip_surf, track_rect.topleft)
+    if brd_color:
+        pygame.draw.rect(surface, brd_color, track_rect, width=slider.border_width, border_top_left_radius=tl,
+                         border_top_right_radius=tr, border_bottom_left_radius=bl,
+                         border_bottom_right_radius=br)
+    dot_x = track_rect.x + used_width
+    dot_x = max(track_rect.left + slider.dot_radius, min(dot_x, track_rect.right - slider.dot_radius))
+    pygame.draw.circle(surface, dot_color, (int(dot_x), int(track_rect.centery)),
+                       slider.dot_radius + slider.extra_dot_radius)
+    if (slider.state == "enabled" or slider.show_value_when_disabled) and (
+            slider.show_value_when_pressed and slider.pressed or slider.show_value_when_hovered and is_hovering and not slider.pressed or slider.show_value_when_unpressed):
+        if slider.show_full_rounding_of_whole_numbers:
+            text_surf = slider.font.render(str(round(slider.value, slider.round_display_value)), True, display_color)
+        elif not slider.show_full_rounding_of_whole_numbers and round(slider.value,
+                                                                      slider.round_display_value) % 1 == 0:
+            text_surf = slider.font.render(str(round(slider.value, slider.round_display_value)).replace(".0", ""), True,
+                                           display_color)
+        elif not slider.show_full_rounding_of_whole_numbers:
+            text_surf = slider.font.render(str(round(slider.value, slider.round_display_value)), True, display_color)
+        text_rect = text_surf.get_rect()
+        if slider.move_text_with_dot_radius:
+            text_rect.center = (dot_x, track_rect.centery + 25 + slider.dot_radius + slider.extra_dot_radius)
+        else:
+            text_rect.center = (dot_x, track_rect.centery + 25 + slider.dot_radius)
+        surface.blit(text_surf, text_rect)
+
+    text_surf = slider.font.render(slider.text, True, text_color)
+    text_rect = text_surf.get_rect()
+    if slider.move_text_with_dot_radius:
+        text_y_center = track_rect.centery - 25 - slider.dot_radius - slider.extra_dot_radius
+    else:
+        text_y_center = track_rect.centery - 25 - slider.dot_radius
+
+    if slider.alignment == "stretched" and len(slider.text) > 1 and not slider.auto_size:
+        total_char_width = sum(slider.font.render(char, True, text_color).get_width() for char in slider.text)
+        available_width = draw_rect.width - (slider.alignment_spacing * 2)
+        if available_width > total_char_width:
+            spacing = (available_width - total_char_width) / (len(slider.text) - 1)
+            current_x = draw_rect.left + slider.alignment_spacing
+            for char in slider.text:
+                char_surf = slider.font.render(char, True, text_color)
+                surface.blit(char_surf, char_surf.get_rect(midleft=(current_x, text_y_center)))
+                current_x += char_surf.get_width() + spacing
+        else:
+            surface.blit(text_surf, text_surf.get_rect(center=(draw_rect.centerx, text_y_center)))
+    else:
+        if slider.alignment == "left":
+            text_rect.midleft = (draw_rect.left + slider.alignment_spacing, text_y_center)
+        elif slider.alignment == "right":
+            text_rect.midright = (draw_rect.right - slider.alignment_spacing, text_y_center)
+        else:
+            text_rect.center = (draw_rect.centerx, text_y_center)
+        surface.blit(text_surf, text_rect)
+
+
+def is_point_in_rounded_rect(slider, point):
+    offset_x, offset_y = get_screen_offset(slider)
+    draw_rect = slider.rect.move(offset_x, offset_y)
+    track_y = draw_rect.centery + 5
+    track_rect = pygame.Rect(draw_rect.x, track_y - (slider.height // 2), draw_rect.width, slider.height)
+    x, y = point
+    if not track_rect.collidepoint(point):
+        return False
+    max_radius = min(track_rect.width, track_rect.height) // 2
+    tl = min(slider.top_left_corner_radius, max_radius)
+    tr = min(slider.top_right_corner_radius, max_radius)
+    bl = min(slider.bottom_left_corner_radius, max_radius)
+    br = min(slider.bottom_right_corner_radius, max_radius)
+    if x < track_rect.left + tl and y < track_rect.top + tl:
+        cx, cy = track_rect.left + tl, track_rect.top + tl
+        if (x - cx) ** 2 + (y - cy) ** 2 > tl ** 2:
+            return False
+    elif x > track_rect.right - tr and y < track_rect.top + tr:
+        cx, cy = track_rect.right - tr, track_rect.top + tr
+        if (x - cx) ** 2 + (y - cy) ** 2 > tr ** 2:
+            return False
+    elif x < track_rect.left + bl and y > track_rect.bottom - bl:
+        cx, cy = track_rect.left + bl, track_rect.bottom - bl
+        if (x - cx) ** 2 + (y - cy) ** 2 > bl ** 2:
+            return False
+    elif x > track_rect.right - br and y > track_rect.bottom - br:
+        cx, cy = track_rect.right - br, track_rect.bottom - br
+        if (x - cx) ** 2 + (y - cy) ** 2 > br ** 2:
+            return False
+    return True
+
+
+def react(slider, event=None):
+    if slider.state != "enabled" or not slider.visible:
+        return
+    mouse_pos = pygame.mouse.get_pos()
+    is_inside = is_point_in_rounded_rect(slider, mouse_pos)
+
+    def update_value():
+        offset_x, offset_y = get_screen_offset(slider)
+        draw_rect = slider.rect.move(offset_x, offset_y)
+
+        relative_x = mouse_pos[0] - draw_rect.x
+        pct = relative_x / draw_rect.width
+        pct = max(0, min(1, pct))
+        new_slider_value = slider.start + (pct * (slider.end - slider.start))
+        moved = slider.value != new_slider_value
+        slider.value = new_slider_value
+        current_time = pygame.time.get_ticks()
+        if not slider.pressed_before:
+            if slider.click_command: slider.click_command()
+            if slider.click_sound: slider.click_sound.play()
+            slider.pressed_before = True
+        else:
+            if moved:
+                slider.last_value_update_time = current_time
+                if slider.drag_command: slider.drag_command()
+                if slider.drag_sound:
+                    if slider.drag_sound_started:
+                        if slider.drag_sound_started + slider.drag_sound_length > time.time():
+                            return
+                    slider.drag_sound.play()
+                    slider.drag_sound_length = slider.drag_sound.get_length()
+                    slider.drag_sound_started = time.time()
+            else:
+                if current_time - slider.last_value_update_time > slider.trigger_hold_delay:
+                    if slider.hold_command: slider.hold_command()
+                    if slider.hold_sound:
+                        if slider.hold_sound_started:
+                            if slider.hold_sound_started + slider.hold_sound_length > time.time():
+                                return
+                        slider.hold_sound.play()
+                        slider.hold_sound_length = slider.hold_sound.get_length()
+                        slider.hold_sound_started = time.time()
+
+    if not event:
+        if pygame.mouse.get_pressed()[0] and is_inside:
+            slider.pressed = True
+        if slider.pressed:
+            if pygame.mouse.get_pressed()[0]:
+                update_value()
+            else:
+                slider.pressed = False
+                slider.pressed_before = False
+                if slider.release_sound: slider.release_sound.play()
+                if slider.release_command: slider.release_command()
+    else:
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1 and is_inside:
+                slider.pressed = True
+                update_value()
+                if slider.click_sound: slider.click_sound.play()
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:
+                slider.pressed = False
+                slider.pressed_before = False
+                if slider.release_sound: slider.release_sound.play()
+                if slider.release_command: slider.release_command()
+        elif event.type == pygame.MOUSEMOTION:
+            if slider.pressed:
+                update_value()
+    t = pygame.time.get_ticks() * 0.01
+    pulse = (1 - math.cos(t * math.pi)) * 0.5
+    if slider.pressed:
+        slider.extra_dot_radius = min(slider.max_extra_dot_radius, slider.extra_dot_radius + pulse)
+    else:
+        slider.extra_dot_radius = max(0, slider.extra_dot_radius - pulse)
