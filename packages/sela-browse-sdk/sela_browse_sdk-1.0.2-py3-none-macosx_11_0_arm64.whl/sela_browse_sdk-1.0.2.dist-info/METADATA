@@ -1,0 +1,363 @@
+Metadata-Version: 2.4
+Name: sela-browse-sdk
+Version: 1.0.2
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Rust
+Classifier: Topic :: Internet :: WWW/HTTP :: Browsers
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Summary: Sela Network Python SDK - P2P client for browser automation agents
+Keywords: sela,p2p,libp2p,browser-automation,web-scraping,semantic
+Author-email: Sela Network <dev@sela.network>
+License: MIT
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown; charset=UTF-8; variant=GFM
+Project-URL: documentation, https://github.com/sela-network/sela-node-v2/tree/main/client-sdk
+Project-URL: homepage, https://github.com/sela-network/sela-node-v2
+Project-URL: repository, https://github.com/sela-network/sela-node-v2
+
+# Sela Network Python SDK
+
+Python bindings for the Sela Network P2P client SDK.
+
+## Installation
+
+```bash
+pip install sela-browse-sdk
+```
+
+## Quick Start
+
+```python
+import asyncio
+from sela_browse_sdk import (
+    SelaClient,
+    SelaClientConfig,
+    BootstrapNode,
+    DiscoveryOptions,
+)
+
+async def main():
+    # Configure the client
+    config = SelaClientConfig(
+        bootstrap_nodes=[
+            BootstrapNode(
+                peer_id="12D3KooW...",
+                multiaddr="/ip4/127.0.0.1/tcp/9000"
+            )
+        ],
+        relay_nodes=None,
+        api_key="sk_live_xxx",
+        connection_timeout_secs=30,
+        request_timeout_secs=60,
+        discovery_timeout_secs=10,
+        auto_discover_relays=True,
+    )
+
+    # Create and start the client
+    client = await SelaClient.create(config)
+    await client.start()
+
+    print(f"Connected as: {await client.local_peer_id()}")
+
+    # Discover available agents
+    discovery_opts = DiscoveryOptions(
+        max_agents=5,
+        min_reputation=None,
+        timeout_ms=10000,
+    )
+    agents = await client.discover_agents("web", discovery_opts)
+    print(f"Found {len(agents)} agents")
+
+    if agents:
+        # Connect to first available agent (recommended)
+        connected = await client.connect_to_first_available(agents, None)
+        print(f"Connected to: {connected.peer_id}")
+
+        # Browse a URL
+        response = await client.browse("https://example.com", None)
+        print(f"Page title: {response.page.metadata.title}")
+        print(f"Page type: {response.page.page_type}")
+        print(f"Content items: {len(response.page.content)}")
+
+        # Search on a platform
+        results = await client.search("python async", "google", None)
+        print(f"Search results: {len(results.page.content)} items")
+
+    # Poll for events
+    while True:
+        event = await client.poll_event()
+        if event is None:
+            break
+        print(f"Event: {event}")
+
+    # Shutdown
+    await client.shutdown()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## API Reference
+
+### SelaClient
+
+The main client class for interacting with the Sela Network.
+
+#### Constructor
+
+```python
+# Create with config
+client = await SelaClient.create(config: SelaClientConfig | None = None)
+
+# Create from environment variables
+client = await SelaClient.from_env()
+```
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `start()` | Start the P2P client and connect to bootstrap nodes |
+| `stop()` | Stop the client |
+| `shutdown()` | Gracefully shutdown the client |
+| `local_peer_id()` | Get the local peer ID |
+| `state()` | Get current client state |
+| `discover_agents(capability, options?)` | Discover agents with specified capability |
+| `connect_to_agent(peer_id, multiaddr, options?)` | Connect to a specific agent |
+| `connect_to_first_available(agents, options?)` | Race to connect to first available agent |
+| `browse(url, options?)` | Browse a URL and get semantic content |
+| `search(query, platform?, options?)` | Search on a platform |
+| `poll_event()` | Poll for the next event (non-blocking) |
+| `get_reputation(peer_id)` | Get reputation for a peer |
+| `report_outcome(peer_id, outcome, response_time_ms?)` | Report task outcome |
+
+### Configuration Types
+
+#### SelaClientConfig
+
+```python
+SelaClientConfig(
+    bootstrap_nodes: list[BootstrapNode],           # Required
+    relay_nodes: list[RelayNode] | None = None,
+    api_key: str | None = None,
+    connection_timeout_secs: int | None = None,     # Default: 30
+    request_timeout_secs: int | None = None,        # Default: 60
+    discovery_timeout_secs: int | None = None,      # Default: 10
+    auto_discover_relays: bool | None = None,       # Default: True
+)
+```
+
+#### BootstrapNode
+
+```python
+BootstrapNode(
+    peer_id: str,      # e.g., "12D3KooW..."
+    multiaddr: str,    # e.g., "/ip4/127.0.0.1/tcp/9000"
+)
+```
+
+#### RelayNode
+
+```python
+RelayNode(
+    peer_id: str,
+    multiaddr: str,
+)
+```
+
+#### DiscoveryOptions
+
+```python
+DiscoveryOptions(
+    max_agents: int | None = None,
+    min_reputation: float | None = None,  # Filter by minimum reputation score
+    timeout_ms: int | None = None,
+)
+```
+
+#### BrowseOptions
+
+```python
+BrowseOptions(
+    session_id: str | None = None,     # Reuse existing session
+    api_key: str | None = None,        # Override config API key
+    timeout_ms: int | None = None,
+    include_html: bool | None = None,
+)
+```
+
+#### ConnectionOptions
+
+```python
+ConnectionOptions(
+    timeout_ms: int | None = None,
+)
+```
+
+### Response Types
+
+#### SemanticResponse
+
+```python
+class SemanticResponse:
+    request_id: str
+    session_id: str
+    page: SemanticPage
+    action_result: ActionResult
+    message: str | None
+    raw_html: str | None
+```
+
+#### SemanticPage
+
+```python
+class SemanticPage:
+    url: str
+    page_type: str                              # e.g., "search", "profile", "generic"
+    metadata: PageMetadata
+    content: list[SemanticContent]              # Extracted content items
+    available_actions: list[AvailableAction]
+    schema_version: int
+    extracted_at: int                           # Unix timestamp
+```
+
+#### PageMetadata
+
+```python
+class PageMetadata:
+    title: str | None
+    description: str | None
+    author: str | None
+    canonical_url: str | None
+```
+
+#### SemanticContent
+
+```python
+class SemanticContent:
+    content_type: str           # e.g., "tweet", "search_result"
+    content_id: str | None
+    backend_node_id: str | None
+    accessible_name: str | None
+    role: str | None
+    fields_json: str            # JSON string of extracted fields
+    actions: list[AvailableAction]
+```
+
+#### ActionResult (Enum)
+
+```python
+class ActionResult:
+    Success()
+    Failed(error: str)
+    AlreadyPerformed()
+    Skipped()
+    PendingApproval()
+```
+
+### Event Types
+
+#### ClientEvent (Enum)
+
+Events are returned as enum variants:
+
+```python
+class ClientEvent:
+    Connected(peer_id: str, multiaddr: str | None)
+    Disconnected(peer_id: str, reason: str | None)
+    Reconnecting(peer_id: str, attempt: int)
+    AgentDiscovered(peer_id: str, capability: str)
+    AgentLost(peer_id: str)
+    RateLimited(peer_id: str, retry_after_ms: int)
+    Retrying(peer_id: str, attempt: int, max_attempts: int)
+    Error(message: str, code: str | None)
+    Bootstrapped(connected_peers: int)
+    SessionCreated(session_id: str)
+    SessionClosed(session_id: str)
+```
+
+#### TaskOutcome (Enum)
+
+```python
+class TaskOutcome:
+    Success()
+    Failed()
+    Timeout()
+    Cancelled()
+```
+
+### Error Handling
+
+```python
+from sela_browse_sdk import SelaError
+
+try:
+    response = await client.browse("https://example.com", None)
+except SelaError.ConnectionError as e:
+    print(f"Connection failed: {e}")
+except SelaError.TimeoutError as e:
+    print(f"Request timed out: {e}")
+except SelaError.BrowseError as e:
+    print(f"Browse failed: {e}")
+except SelaError as e:
+    print(f"Error: {e}")
+```
+
+Error types:
+- `ConfigurationError` - Invalid configuration
+- `ConnectionError` - Connection failed
+- `TimeoutError` - Request timed out
+- `ProtocolError` - Protocol error
+- `NotConnectedError` - Not connected to any agent
+- `NotStartedError` - Client not started
+- `AlreadyStartedError` - Client already started
+- `ShutdownError` - Shutdown failed
+- `BrowseError` - Browse operation failed
+- `DiscoveryError` - Agent discovery failed
+- `ReputationError` - Reputation query failed
+- `InvalidPeerIdError` - Invalid peer ID format
+- `InvalidMultiaddrError` - Invalid multiaddr format
+- `InternalError` - Internal error
+
+## Development
+
+### Building from Source
+
+Requires:
+- Rust 1.70+
+- Python 3.9+
+- maturin
+
+```bash
+# Install maturin
+pip install maturin
+
+# Build and install in development mode
+cd client-sdk/crates/sela-py
+maturin develop
+
+# Or build a wheel
+maturin build --release
+```
+
+### Running Tests
+
+```bash
+# Rust tests
+cargo test -p sela-py
+
+# Python E2E test
+python ../../examples/p2p_browse.py
+```
+
+## License
+
+MIT License - see [LICENSE](../../../LICENSE) for details.
+
