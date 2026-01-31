@@ -1,0 +1,142 @@
+"""
+Background task definitions.
+
+Usage:
+    # Enqueue a task from your routes/services:
+    from services.arq import enqueue
+    await enqueue("send_welcome_email", user_id=123)
+
+    # Run the worker:
+    uv run arq services.tasks.WorkerSettings
+"""
+
+import asyncio
+import logging
+from datetime import datetime
+
+from arq import cron
+from settings import settings
+
+logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Task Functions
+# =============================================================================
+
+
+async def send_welcome_email(ctx: dict, user_id: int) -> dict:
+    """
+    Example task: Send welcome email to a user.
+
+    Args:
+        ctx: ARQ context dict (contains redis connection, job_id, etc.)
+        user_id: ID of the user to email
+
+    Returns:
+        Result dict (stored in Redis, retrievable via job.result())
+    """
+    logger.info(f"Sending welcome email to user {user_id}")
+
+    # Simulate email sending
+    await asyncio.sleep(1)
+
+    return {"status": "sent", "user_id": user_id, "sent_at": datetime.utcnow().isoformat()}
+
+
+async def process_webhook(ctx: dict, payload: dict, retry_count: int = 0) -> dict:
+    """
+    Example task: Process incoming webhook with retry logic.
+
+    Args:
+        ctx: ARQ context dict
+        payload: Webhook payload to process
+        retry_count: Number of retries attempted
+
+    Returns:
+        Processing result
+    """
+    logger.info(f"Processing webhook (attempt {retry_count + 1})")
+
+    # Your webhook processing logic here
+    # If it fails, ARQ will retry based on WorkerSettings.max_tries
+
+    return {"processed": True, "attempt": retry_count + 1}
+
+
+# =============================================================================
+# Scheduled Tasks (Cron)
+# =============================================================================
+
+
+async def cleanup_expired_sessions(ctx: dict) -> int:
+    """
+    Example cron task: Clean up expired sessions.
+
+    Runs daily at 3:00 AM (configured in WorkerSettings.cron_jobs).
+
+    Returns:
+        Number of sessions cleaned up
+    """
+    logger.info("Running scheduled session cleanup")
+
+    # Your cleanup logic here
+    cleaned_count = 0
+
+    logger.info(f"Cleaned up {cleaned_count} expired sessions")
+    return cleaned_count
+
+
+# =============================================================================
+# Worker Startup/Shutdown
+# =============================================================================
+
+
+async def startup(ctx: dict) -> None:
+    """Called when worker starts up."""
+    logger.info("ARQ worker starting up")
+    # Initialize any resources (DB connections, etc.)
+
+
+async def shutdown(ctx: dict) -> None:
+    """Called when worker shuts down."""
+    logger.info("ARQ worker shutting down")
+    # Clean up resources
+
+
+# =============================================================================
+# Worker Settings
+# =============================================================================
+
+
+class WorkerSettings:
+    """
+    ARQ worker configuration.
+
+    Run with: uv run arq services.tasks.WorkerSettings
+    """
+
+    from services.arq import get_redis_settings
+
+    redis_settings = get_redis_settings()
+
+    # Register task functions
+    functions = [
+        send_welcome_email,
+        process_webhook,
+    ]
+
+    # Cron jobs (scheduled tasks)
+    cron_jobs = [
+        cron(cleanup_expired_sessions, hour=3, minute=0),  # Daily at 3:00 AM
+    ]
+
+    # Worker behavior
+    max_jobs = int(settings.arq_max_jobs)
+    job_timeout = int(settings.arq_job_timeout)
+    max_tries = 3
+    retry_delay = 10  # seconds between retries
+
+    # Lifecycle hooks
+    on_startup = startup
+    on_shutdown = shutdown

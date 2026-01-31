@@ -1,0 +1,81 @@
+"""ARQ task queue connection and utilities."""
+
+from arq import create_pool
+from arq.connections import ArqRedis, RedisSettings
+from settings import settings
+
+_pool: ArqRedis | None = None
+
+
+def get_redis_settings() -> RedisSettings:
+    """Parse Redis URL into ARQ RedisSettings."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(settings.arq_redis_url)
+    return RedisSettings(
+        host=parsed.hostname or "localhost",
+        port=parsed.port or 6379,
+        database=int(parsed.path.lstrip("/") or 0),
+        password=parsed.password,
+    )
+
+
+async def get_pool() -> ArqRedis:
+    """Get or create ARQ Redis connection pool."""
+    global _pool
+    if _pool is None:
+        _pool = await create_pool(get_redis_settings())
+    return _pool
+
+
+async def close_pool() -> None:
+    """Close the connection pool."""
+    global _pool
+    if _pool is not None:
+        await _pool.close()
+        _pool = None
+
+
+async def enqueue(
+    function: str,
+    *args,
+    _job_id: str | None = None,
+    _defer_by: float | None = None,
+    **kwargs,
+):
+    """
+    Enqueue a task for background processing.
+
+    Args:
+        function: Name of the task function (e.g., "send_email")
+        *args: Positional arguments for the task
+        _job_id: Optional custom job ID (for deduplication)
+        _defer_by: Optional delay in seconds before execution
+        **kwargs: Keyword arguments for the task
+
+    Returns:
+        Job object with job_id attribute
+    """
+    pool = await get_pool()
+    job = await pool.enqueue_job(
+        function,
+        *args,
+        _job_id=_job_id,
+        _defer_by=_defer_by,
+        **kwargs,
+    )
+    return job
+
+
+async def get_job_status(job_id: str) -> dict | None:
+    """
+    Get status of a job by ID.
+
+    Returns dict with keys: function, args, kwargs, job_try, enqueue_time,
+    score (scheduled time), success, result, start_time, finish_time
+    """
+    pool = await get_pool()
+    job = await pool.job(job_id)
+    if job is None:
+        return None
+    return await job.info()

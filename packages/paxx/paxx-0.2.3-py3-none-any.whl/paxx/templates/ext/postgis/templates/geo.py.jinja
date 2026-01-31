@@ -1,0 +1,161 @@
+"""
+Geospatial utilities for PostGIS.
+
+Usage:
+    from services.geo import Geography, make_point, distance_within, bbox_filter
+
+    # In models:
+    from services.geo import Geography
+
+    class Hide(Base):
+        __tablename__ = "hides"
+
+        location = mapped_column(
+            Geography(geometry_type="POINT", srid=4326),
+            nullable=False,
+            index=True,  # Creates GIST index
+        )
+
+    # In queries - filter by radius:
+    from services.geo import distance_within
+
+    stmt = select(Hide).where(
+        distance_within(Hide.location, lat=52.52, lng=13.405, radius_meters=100)
+    )
+
+    # Viewport/bounding box queries:
+    from services.geo import bbox_filter
+
+    stmt = select(Hide).where(
+        bbox_filter(Hide.location, west=13.0, south=52.0, east=14.0, north=53.0)
+    )
+
+    # Order by distance:
+    from services.geo import distance_meters
+
+    stmt = select(Hide).order_by(
+        distance_meters(Hide.location, lat=52.52, lng=13.405)
+    )
+"""
+
+from typing import Any
+
+from geoalchemy2 import Geography, Geometry
+from geoalchemy2.functions import ST_DWithin, ST_MakePoint, ST_SetSRID
+from sqlalchemy import func
+
+
+def make_point(lng: float, lat: float) -> Any:
+    """
+    Create a PostGIS geography point from longitude/latitude.
+
+    Args:
+        lng: Longitude (x coordinate)
+        lat: Latitude (y coordinate)
+
+    Returns:
+        PostGIS point expression for use in queries
+    """
+    return ST_SetSRID(ST_MakePoint(lng, lat), 4326)
+
+
+def distance_within(
+    column: Any,
+    lat: float,
+    lng: float,
+    radius_meters: float,
+) -> Any:
+    """
+    Create a filter for rows within radius_meters of a point.
+
+    Uses ST_DWithin which is optimized for indexed geography columns.
+
+    Args:
+        column: Geography column to filter on (e.g., Hide.location)
+        lat: Latitude of center point
+        lng: Longitude of center point
+        radius_meters: Search radius in meters
+
+    Returns:
+        SQLAlchemy filter clause for use in where()
+
+    Example:
+        stmt = select(Hide).where(
+            distance_within(Hide.location, lat=52.52, lng=13.405, radius_meters=100)
+        )
+    """
+    point = make_point(lng, lat)
+    return ST_DWithin(column, point, radius_meters)
+
+
+def bbox_filter(
+    column: Any,
+    west: float,
+    south: float,
+    east: float,
+    north: float,
+) -> Any:
+    """
+    Create a filter for rows within a bounding box (viewport query).
+
+    Uses ST_Intersects with ST_MakeEnvelope for efficient viewport queries.
+
+    Args:
+        column: Geography column to filter on
+        west: Western longitude bound
+        south: Southern latitude bound
+        east: Eastern longitude bound
+        north: Northern latitude bound
+
+    Returns:
+        SQLAlchemy filter clause for use in where()
+
+    Example:
+        stmt = select(Hide).where(
+            bbox_filter(Hide.location, west=13.0, south=52.0, east=14.0, north=53.0)
+        )
+    """
+    # ST_MakeEnvelope creates a rectangular polygon
+    # Cast to geography for accurate distance calculations
+    envelope = func.ST_MakeEnvelope(west, south, east, north, 4326)
+    return func.ST_Intersects(column, func.ST_GeogFromWKB(func.ST_AsBinary(envelope)))
+
+
+def distance_meters(column: Any, lat: float, lng: float) -> Any:
+    """
+    Calculate distance in meters from a point.
+
+    Returns a column expression for use in select() or order_by().
+
+    Args:
+        column: Geography column
+        lat: Latitude of reference point
+        lng: Longitude of reference point
+
+    Returns:
+        SQLAlchemy column expression representing distance in meters
+
+    Example:
+        # Order results by distance
+        stmt = select(Hide).order_by(
+            distance_meters(Hide.location, lat=52.52, lng=13.405)
+        )
+
+        # Include distance in results
+        stmt = select(
+            Hide,
+            distance_meters(Hide.location, lat=52.52, lng=13.405).label("distance")
+        )
+    """
+    point = make_point(lng, lat)
+    return func.ST_Distance(column, point)
+
+
+__all__ = [
+    "Geography",
+    "Geometry",
+    "make_point",
+    "distance_within",
+    "bbox_filter",
+    "distance_meters",
+]

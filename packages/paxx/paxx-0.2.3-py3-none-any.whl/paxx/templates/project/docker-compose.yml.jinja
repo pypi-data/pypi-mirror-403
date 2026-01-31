@@ -1,0 +1,41 @@
+# Docker Compose for {{ project_name }} development
+# Usage: docker compose up
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - /app/.venv  # Exclude .venv from mount (use container's venv)
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/{{ project_name_snake }}
+      - DEBUG=true
+      - ENVIRONMENT=development
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: {{ project_name_snake }}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

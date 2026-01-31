@@ -1,0 +1,111 @@
+# {{ project_name }}
+
+{{ project_description }}
+
+## Project Structure
+
+```
+{{ project_name }}/
+├── main.py                     # FastAPI app factory with lifespan
+├── settings.py                 # Pydantic Settings (env-aware)
+├── alembic.ini                 # Migration config
+├── pyproject.toml              # Dependencies
+├── docker-compose.yml          # Local dev environment
+├── Dockerfile / Dockerfile.dev # Container images
+├── .env / .env.example         # Environment variables
+│
+├── core/                       # Core utilities
+│   ├── exceptions.py           # Custom exceptions + handlers
+│   ├── middleware.py           # Request/response middleware
+│   ├── logging.py              # JSON/console logging config
+│   ├── dependencies.py         # FastAPI dependencies (pagination)
+│   └── schemas.py              # Shared schemas (ListResponse, PaginationMeta)
+│
+├── db/                         # Database
+│   ├── database.py             # Async SQLAlchemy, Base, get_db, BaseModel
+│   └── migrations/             # Alembic migrations
+│
+├── features/                   # Domain features
+│   └── <name>/                 # Each feature has:
+│       ├── config.py           # Router prefix, tags
+│       ├── models.py           # SQLAlchemy models
+│       ├── schemas.py          # Pydantic schemas
+│       ├── services.py         # Async business logic
+│       └── routes.py           # FastAPI endpoints
+│
+├── e2e/                        # End-to-end tests
+│   ├── conftest.py             # Test fixtures
+│   └── test_*.py               # API tests
+│
+└── deploy/                     # Deployment configs
+```
+
+## Key Patterns
+
+### Domain-Driven Features
+Each feature is self-contained under `features/<name>/`:
+- `models.py` — SQLAlchemy models inheriting `BaseModel`
+- `schemas.py` — Pydantic schemas (Create, Update, Public)
+- `services.py` — Async business logic functions
+- `routes.py` — FastAPI endpoints delegating to services
+- `config.py` — Router metadata (prefix, tags)
+
+### App Factory Pattern
+```python
+# main.py
+def create_app() -> FastAPI:
+    app = FastAPI(...)
+    register_exception_handlers(app)
+    register_middleware(app)
+    app.include_router(...)
+    return app
+
+app = create_app()
+```
+
+### Async Throughout
+- Database: `AsyncSession` from SQLAlchemy async
+- All routes and services are `async def`
+- Dependencies use async generators
+
+### Database Inheritance
+```python
+class BaseModel(TimestampMixin, Base):
+    __abstract__ = True
+    id: Mapped[UUIDPK]
+    # Inherits: created_at, updated_at
+```
+
+## Common Commands
+
+```bash
+# Start dev server
+paxx start
+
+# Create new feature
+paxx feature create <name>
+
+# Database migrations
+paxx db migrate "migration message"
+paxx db upgrade
+paxx db downgrade
+
+# Docker
+paxx docker up -d
+paxx docker down
+paxx docker logs -f
+
+# Run tests
+uv run pytest
+```
+
+## Development Workflow
+
+1. Create a new feature: `paxx feature create users`
+2. Define models in `features/users/models.py`
+3. Create schemas in `features/users/schemas.py`
+4. Implement business logic in `features/users/services.py`
+5. Add endpoints in `features/users/routes.py`
+6. Generate migration: `paxx db migrate "add users table"`
+7. Apply migration: `paxx db upgrade`
+8. Write tests in `e2e/test_users.py`
