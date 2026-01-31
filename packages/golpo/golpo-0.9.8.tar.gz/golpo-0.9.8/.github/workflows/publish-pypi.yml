@@ -1,0 +1,65 @@
+# Publish golpo Python package to PyPI
+# Triggers: new release, version tag (v*), or manual run
+
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  PACKAGE_DIR: .   # Use "golpo-pip" if this workflow lives in repo root (monorepo)
+
+jobs:
+  build-and-publish:
+    name: Build and publish to PyPI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # Required for PyPI trusted publishing (OIDC)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install build
+        run: pip install build
+
+      - name: Set version from tag (on tag push)
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          # Optional: sync pyproject.toml version with tag (uncomment if you want automation)
+          pip install tomli
+          python -c "
+          import re
+          p = 'pyproject.toml'
+          with open(p) as f: c = f.read()
+          with open(p, 'w') as f: f.write(re.sub(r'^version = \".*\"', 'version = \"' + '$VERSION' + '\"', c, flags=re.M))
+          "
+          echo "Publishing version from tag: $VERSION"
+
+      - name: Build package
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: ${{ env.PACKAGE_DIR }}/dist
+          # Trusted publishing (OIDC): no username/password. Configure at:
+          # https://pypi.org/manage/project/golpo/settings/publishing/
+          # If using API token instead, add repository secret PYPI_API_TOKEN and:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          username: __token__
