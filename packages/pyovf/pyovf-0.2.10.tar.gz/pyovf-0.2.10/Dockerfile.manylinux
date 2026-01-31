@@ -1,0 +1,78 @@
+# Multi-stage Docker build for PyPI-compatible wheels
+# Uses official Python images to build wheels with proper platform tags
+# This ensures manylinux_2_xx compatibility
+
+FROM python:3.9-slim as py39
+FROM python:3.10-slim as py310
+FROM python:3.11-slim as py311
+FROM python:3.12-slim as py312
+FROM python:3.13-slim as py313
+FROM python:3.14-slim as py314
+
+# Base builder stage
+FROM python:3.12-slim as builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    git \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy project files
+COPY . /build/
+
+# Build for Python 3.9
+FROM builder as build-py39
+RUN python3.9 -m pip install --upgrade pip setuptools wheel build && \
+    python3.9 -m pip install pybind11 cmake numpy setuptools-scm && \
+    python3.9 setup.py bdist_wheel && \
+    mv dist/*cp39*.whl /wheels/ 2>/dev/null || true
+
+# Build for Python 3.10
+FROM builder as build-py310
+RUN python3.10 -m pip install --upgrade pip setuptools wheel build && \
+    python3.10 -m pip install pybind11 cmake numpy setuptools-scm && \
+    python3.10 setup.py bdist_wheel && \
+    mv dist/*cp310*.whl /wheels/ 2>/dev/null || true
+
+# Build for Python 3.11
+FROM builder as build-py311
+RUN python3.11 -m pip install --upgrade pip setuptools wheel build && \
+    python3.11 -m pip install pybind11 cmake numpy setuptools-scm && \
+    python3.11 setup.py bdist_wheel && \
+    mv dist/*cp311*.whl /wheels/ 2>/dev/null || true
+
+# Build for Python 3.12
+FROM builder as build-py312
+RUN python3.12 -m pip install --upgrade pip setuptools wheel build && \
+    python3.12 -m pip install pybind11 cmake numpy setuptools-scm && \
+    python3.12 setup.py bdist_wheel && \
+    mv dist/*cp312*.whl /wheels/ 2>/dev/null || true
+
+# Build for Python 3.13
+FROM builder as build-py313
+RUN python3.13 -m pip install --upgrade pip setuptools wheel build && \
+    python3.13 -m pip install pybind11 cmake numpy setuptools-scm && \
+    python3.13 setup.py bdist_wheel && \
+    mv dist/*cp313*.whl /wheels/ 2>/dev/null || true
+
+# Build for Python 3.14
+FROM builder as build-py314
+RUN python3.14 -m pip install --upgrade pip setuptools wheel build && \
+    python3.14 -m pip install pybind11 cmake numpy setuptools-scm && \
+    python3.14 setup.py bdist_wheel && \
+    mv dist/*cp314*.whl /wheels/ 2>/dev/null || true
+
+# Final stage: collect all wheels
+FROM scratch as final
+COPY --from=build-py39 /wheels /
+COPY --from=build-py310 /wheels /
+COPY --from=build-py311 /wheels /
+COPY --from=build-py312 /wheels /
+COPY --from=build-py313 /wheels /
+COPY --from=build-py314 /wheels /
