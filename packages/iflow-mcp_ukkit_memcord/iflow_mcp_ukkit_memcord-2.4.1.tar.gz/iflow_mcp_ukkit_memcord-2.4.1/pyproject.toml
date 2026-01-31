@@ -1,0 +1,193 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "iflow-mcp_ukkit_memcord"
+version = "2.4.1"
+description = "privacy-first, self-hosted MCP server helps you organize chat history, summarize messages, search across past chats with AI — and keeps everything secure and fully under your control."
+authors = [
+    {name = "MemCord", email = "memcord@ultrafastidio.us"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.25.0",  # MCP SDK - latest stable
+    "nltk>=3.8",
+    "aiofiles>=23.0",
+    "pydantic>=2.0.0",
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "pdfplumber>=0.10.0",
+    "pypdfium2>=5.0.0",  # Explicitly pin to avoid yanked 4.30.1
+    "pandas>=2.0.0",
+    "trafilatura>=1.8.0",
+    "python-magic>=0.4.27",
+    "psutil>=5.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.10.0",
+    "pytest-cov>=4.0.0",
+    "pytest-benchmark>=4.0.0",
+    "factory-boy>=3.3.0",
+    "selenium>=4.15.0",
+    "webdriver-manager>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "psutil>=5.9.0",
+    "mypy>=1.0.0",
+    "bandit>=1.7.0",
+]
+
+[project.scripts]
+memcord = "memcord.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/memcord"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/",
+    "README.md",
+    "pyproject.toml",
+]
+
+# Hatch environments
+[tool.hatch.envs.default]
+python = "3.10"
+
+[tool.hatch.envs.lint]
+dependencies = [
+    "ruff>=0.12.0",
+    "mypy>=1.15.0",
+    "bandit>=1.8.0",
+    "types-aiofiles>=24.1.0",
+    "types-psutil>=6.0.0",
+    "types-requests>=2.31.0",
+    "pandas-stubs>=2.0.0",
+    "pydantic>=2.0.0",
+]
+
+[tool.hatch.envs.lint.scripts]
+fmt = [
+    "ruff format {args:.}",
+    "ruff check --fix {args:.}",
+]
+style = [
+    "ruff format --check {args:.}",
+    "ruff check {args:.}",
+]
+typing = "mypy {args:src/memcord}"
+security = "bandit -r {args:src/memcord}"
+checks = [
+    "style {args:.}",
+    "typing {args:src/memcord}",
+    "security {args:src/memcord}",
+]
+
+[tool.black]
+line-length = 120
+target-version = ['py310']
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--disable-warnings",
+    "--tb=short",
+    "-v"
+]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "mcp: MCP protocol tests",
+    "ui: UI automation tests",
+    "slow: Slow running tests",
+    "requires_external: Tests requiring external services",
+    "requires_claude_desktop: Tests requiring Claude Desktop",
+    "requires_claude_desktop_ui: Tests requiring Claude Desktop UI access",
+    "selenium: Browser automation tests"
+]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["src/memcord"]
+omit = ["tests/*", "src/memcord/__pycache__/*"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_ignores = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "trafilatura.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pdfplumber.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "bs4.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "nltk.*"
+ignore_missing_imports = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+[dependency-groups]
+dev = [
+    "factory-boy>=3.3.3",
+    "psutil>=7.0.0",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.0.0",
+    "pytest-benchmark>=5.1.0",
+    "pytest-cov>=6.2.1",
+    "pytest-mock>=3.14.1",
+    "ruff>=0.12.0",
+    "selenium>=4.34.0",
+    "mypy>=1.15.0",
+    "bandit>=1.8.0",
+    "types-aiofiles>=24.1.0",
+    "types-psutil>=6.0.0",
+    "types-requests>=2.31.0",
+    "pandas-stubs>=2.0.0",
+]
