@@ -1,0 +1,146 @@
+Metadata-Version: 2.1
+Name: cache_central_flush
+Version: 2.0.0
+Summary: Lightweight client package to asynchronously trigger centralized cache invalidation via API
+Home-page: https://github.com/karantomar207/cache-central-flush
+Author: Karan Singh Tomar
+Author-email: karantomar207@gmail.com
+License: MIT
+Platform: UNKNOWN
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
+License-File: LICENSE
+
+# cache-central-flush
+
+A lightweight, asynchronous Python client for triggering cache invalidation via HTTP API. Perfect for microservices architectures where you need to invalidate distributed caches (Redis, CDN, etc.) without blocking your application.
+
+## Features
+
+- ✅ **Asynchronous** - Fire-and-forget, won't block your application
+- ✅ **Error-safe** - Failures won't crash your application  
+- ✅ **Lightweight** - Minimal dependencies (only `requests`)
+- ✅ **Thread-safe** - Uses daemon threads for background execution
+- ✅ **Configurable** - Works with any cache invalidation API
+- ✅ **Generic** - Not tied to any specific cache provider
+
+## Installation
+
+### From PyPI
+
+```bash
+pip install cache-central-flush
+```
+
+### From GitHub
+
+```bash
+pip install git+https://github.com/karantomar207/cache-central-flush
+```
+
+## Quick Start
+
+```python
+from cache_central_flush import flush_cache
+
+# Trigger cache invalidation asynchronously
+flush_cache(
+    entity_id=123,
+    entity_type="product",
+    api_url="https://api.example.com/cache/invalidate",
+    api_key="your-api-key-here"
+)
+```
+
+The function returns immediately and the HTTP request happens in the background.
+
+## Parameters
+
+- **entity_id** (int): The ID of the entity to invalidate
+- **entity_type** (str): Type of entity (e.g., "product", "user", "article")
+- **api_url** (str): Full URL of your cache invalidation API endpoint
+- **api_key** (str): Your API key for authentication
+
+## Real-World Example
+
+```python
+from cache_central_flush import flush_cache
+import os
+
+# Get configuration from environment variables
+CACHE_API_URL = os.getenv("CACHE_INVALIDATION_URL")
+CACHE_API_KEY = os.getenv("CACHE_API_KEY")
+
+# Example: E-commerce product update
+def update_product_price(product_id, new_price):
+    # Update price in database
+    db.products.update(product_id, price=new_price)
+    
+    # Invalidate cache asynchronously (won't block the response)
+    flush_cache(
+        entity_id=product_id,
+        entity_type="product",
+        api_url=CACHE_API_URL,
+        api_key=CACHE_API_KEY
+    )
+    
+    return {"success": True, "product_id": product_id}
+```
+
+## Use Cases
+
+- **CDN Cache Invalidation** - Clear CDN cache when content updates
+- **Redis Cache Invalidation** - Invalidate Redis keys via HTTP API
+- **Microservices** - Notify cache service when data changes
+- **Multi-tier Caching** - Invalidate multiple cache layers
+- **Event-driven Architecture** - Trigger cache updates asynchronously
+
+## Configuration
+
+Use environment variables for better security:
+
+```bash
+export CACHE_INVALIDATION_URL="https://api.example.com/cache/invalidate"
+export CACHE_API_KEY="your-secret-api-key"
+```
+
+## API Requirements
+
+Your cache invalidation API should accept:
+- **Method**: POST
+- **Headers**: `x-api-key` for authentication
+- **Body**: JSON with `entity_id` and `entity_type`
+
+Example API endpoint:
+```python
+@app.post("/cache/invalidate")
+def invalidate_cache(request):
+    api_key = request.headers.get("x-api-key")
+    # Validate API key...
+    
+    entity_id = request.json["entity_id"]
+    entity_type = request.json["entity_type"]
+    
+    # Invalidate cache...
+    return {"status": "invalidated"}
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT License - Copyright (c) 2026 Karan Singh Tomar
+
+
