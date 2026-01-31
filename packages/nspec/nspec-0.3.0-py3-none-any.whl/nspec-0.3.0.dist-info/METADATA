@@ -1,0 +1,404 @@
+Metadata-Version: 2.4
+Name: nspec
+Version: 0.3.0
+Summary: Feature request and implementation specification management tool
+License: MIT
+License-File: LICENSE
+Keywords: requirements,specifications,project-management,validation,cli
+Author: Novabuiltdevv
+Requires-Python: >=3.11,<4.0
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: Topic :: Software Development :: Documentation
+Classifier: Topic :: Software Development :: Quality Assurance
+Requires-Dist: textual (>=7.4,<8.0)
+Project-URL: Documentation, https://github.com/Novabuiltdevv/nspec#readme
+Project-URL: Homepage, https://github.com/Novabuiltdevv/nspec
+Project-URL: Repository, https://github.com/Novabuiltdevv/nspec
+Description-Content-Type: text/markdown
+
+# nspec
+
+> Specification-driven project management for AI-native development
+
+**nspec** is a CLI tool for managing feature requests (FRs), implementation specifications (IMPLs), and architecture decision records (ADRs) in a structured, validated workflow. It provides 6-layer validation, dependency graph analysis, engineering metrics, an interactive TUI, and deep integration with AI coding assistants like Claude Code.
+
+## Features
+
+### Core Specification Management
+- **FR/IMPL Pairing** - Every feature request gets a matching implementation spec. Orphans are detected automatically.
+- **Architecture Decision Records** - ADRs (FR-900-999 range) with DRAFT/PROPOSED/ACCEPTED/DEPRECATED/SUPERSEDED lifecycle.
+- **Hierarchical Tasks** - Nested task trees with `[ ]` pending, `[x]` done, `[~]` obsolete, and `[->XXX]` delegated markers.
+- **Acceptance Criteria** - Categorized criteria (Functional, Performance, Quality, Documentation) with progress tracking.
+- **Story CRUD** - Create, delete, complete, supersede, and reject stories from the CLI with optional `--git-add`.
+
+### 6-Layer Validation Engine
+1. **Format** - Markdown structure, required fields, ID format (3-digit), priority/status/LOE regex validation.
+2. **Dataset Loading** - Parse all FR and IMPL documents with fail-fast error reporting.
+3. **Existence** - FR/IMPL pairing, orphan detection, mixed-location detection.
+4. **Dependency** - Graph validation, circular reference detection, dangling dependency cleanup.
+5. **Business Logic** - Priority inheritance (child <= parent), status consistency, LOE totals, completion parity.
+6. **Ordering** - Dependency-based document ordering for generated output.
+
+### Dependency & Epic Management
+- **Dependency Graph** - Add, remove, and visualize dependencies between stories.
+- **Circular Reference Detection** - Prevents invalid dependency cycles.
+- **Epic Hierarchy** - Stories grouped under epics (E0-E3 priority). Auto-assignment of ungrouped stories.
+- **Story Reorganization** - Move stories between epics with `--move-dep`.
+- **Priority Inheritance** - Child stories cannot exceed parent epic priority.
+
+### Engineering Metrics & Analytics
+- **Velocity** - Commits, LOC, active days, stories completed per period.
+- **Quality** - Test coverage, lint issues, cyclomatic complexity, maintainability index.
+- **DORA Metrics** - Story velocity tier, quality gate pass rate, change failure rate.
+- **Team Rank** - Equivalent team size estimation based on LOC/day.
+- **Timeline** - Project timeline since first commit.
+- **Activity Heatmap** - GitHub-style commit calendar in the TUI.
+
+### Interactive Terminal UI
+- **Story Table** - Multi-column sortable display with epic filtering.
+- **Detail Panel** - Sidebar showing full story metadata, tasks, and criteria.
+- **Real-time Search** - Filter stories with `Ctrl+/`, navigate matches with `n`/`p`.
+- **Follow Mode** - Auto-tracks the currently active story.
+- **Reports Screen** - Epic summaries, velocity charts, quality metrics.
+- **Live Reload** - Watches the docs directory and refreshes on file changes.
+- **Compact View** - Toggle between full and compact status display.
+
+### AI Coding Assistant Integration
+- **Status Line** - Compact output (`E{epic} S{story} [{done}/{total}]`) for editor status bars.
+- **LLM Context Generation** - `--context` produces structured YAML showing active work, ready stories, and blockers.
+- **Session Management** - `--session-start`, `--session-log`, `--handoff` for multi-session workflows.
+- **MCP Tools** - `backlog_epics`, `backlog_task`, `task_complete`, `criteria_complete`, and more for programmatic access.
+- **Current Story Tracking** - Persists active story/epic in `.novabuilt.dev/` for tool integration.
+
+### Configuration
+- **Priority Order** - CLI args > environment variables (`NSPEC_*`) > `nspec.toml` > defaults.
+- **Custom Paths** - Configure FR, IMPL, and completed directories via `nspec.toml`.
+- **Strict Modes** - Optional strict epic grouping and completion parity enforcement.
+
+## Installation
+
+### Using pipx (recommended)
+```bash
+pipx install nspec
+```
+
+### Using pip
+```bash
+pip install nspec
+```
+
+### Using poetry
+```bash
+poetry add --group dev nspec
+```
+
+### Using uv
+```bash
+uv add --dev nspec
+```
+
+### From source
+```bash
+git clone https://github.com/Novabuiltdevv/nspec.git
+cd nspec
+poetry install
+```
+
+## Quick Start
+
+```bash
+# Initialize nspec in your project (auto-detects stack)
+nspec init
+
+# Validate all specifications
+nspec --validate
+
+# Generate consolidated NSPEC.md
+nspec --generate
+
+# Dashboard with metrics
+nspec --dashboard
+
+# Open interactive TUI
+nspec --tui
+
+# Create your first story
+nspec --create-new --title "My Feature"
+```
+
+## Project Setup
+
+`nspec init` auto-detects your project stack and scaffolds the full nspec structure:
+
+```bash
+# Auto-detect everything
+nspec init
+
+# Specify CI platform explicitly
+nspec init --ci github
+
+# Custom docs directory
+nspec init --docs-root specifications/
+
+# Overwrite existing files
+nspec init --force
+```
+
+Generated structure:
+```
+project-root/
+├── nspec.toml                    # Path config with commented defaults
+├── nspec.mk                      # Includable Makefile fragment
+└── docs/
+    ├── frs/active/TEMPLATE.md    # FR template
+    ├── impls/active/TEMPLATE.md  # IMPL template
+    └── completed/{done,superseded,rejected}/
+```
+
+### Makefile Integration
+
+Add the generated Makefile fragment to your project:
+
+```makefile
+include nspec.mk
+```
+
+This provides targets: `nspec.validate`, `nspec.generate`, `nspec.dashboard`, `nspec.tui`, `nspec.stats`, `nspec.check`.
+
+The `NSPEC` variable is auto-configured for your stack (e.g., `poetry run nspec`, `npx nspec`, `uv run nspec`).
+
+## CI/CD Integration
+
+### GitHub Actions
+
+`nspec init` generates `.github/workflows/nspec.yml` when it detects a GitHub repo:
+
+```bash
+nspec init --ci github
+```
+
+### Google Cloud Build
+
+```bash
+nspec init --ci cloudbuild
+```
+
+### GitLab CI
+
+```bash
+nspec init --ci gitlab
+```
+
+All CI templates validate specifications and generate NSPEC.md on every push/PR.
+
+## CLI Reference
+
+### Project Setup
+| Command | Description |
+|---------|-------------|
+| `init` | Scaffold nspec project (auto-detects stack) |
+| `init --ci github` | Scaffold with GitHub Actions CI |
+| `init --ci cloudbuild` | Scaffold with Cloud Build CI |
+| `init --ci gitlab` | Scaffold with GitLab CI |
+| `init --force` | Overwrite existing files |
+
+### Validation & Output
+| Command | Description |
+|---------|-------------|
+| `--validate` | Run all 6 validation layers |
+| `--generate` | Generate NSPEC.md and NSPEC_COMPLETED.md |
+| `--dashboard` | Generate + show engineering metrics |
+| `--stats` | Show velocity, quality, and DORA metrics |
+| `--progress [ID]` | Task and acceptance criteria progress |
+| `--statusline` | Compact status for editor integration |
+| `--status-codes` | Print all valid status codes |
+
+### Story Management
+| Command | Description |
+|---------|-------------|
+| `--create-new --title "T" [--priority P1] [--epic ID]` | Create FR+IMPL pair |
+| `--delete --id ID [--force]` | Delete FR+IMPL files |
+| `--complete --id ID` | Archive to completed/done |
+| `--supersede --id ID` | Archive to completed/superseded |
+| `--reject --id ID` | Archive to completed/rejected |
+| `--set-priority --id ID --priority P0` | Change story priority |
+| `--set-loe --id ID --loe "3d"` | Set level of effort (hours/days/weeks) |
+| `--next-status --id ID` | Advance IMPL to next logical status |
+
+### Dependencies
+| Command | Description |
+|---------|-------------|
+| `--deps ID` | List direct dependencies |
+| `--add-dep --to ID --dep DEP` | Add dependency |
+| `--remove-dep --to ID --dep DEP` | Remove dependency |
+| `--move-dep --dep ID --to EPIC` | Move story to epic |
+
+### Task & Criteria Tracking
+| Command | Description |
+|---------|-------------|
+| `--check-task --id ID --task-id 1.1` | Mark task complete |
+| `--check-criteria --id ID --criteria-id AC-F1` | Mark criterion complete |
+| `--validate-criteria --id ID [--strict]` | Validate criteria |
+
+### AI / Session Management
+| Command | Description |
+|---------|-------------|
+| `--context EPIC_ID` | Generate LLM-friendly YAML context |
+| `--session-start --id ID` | Initialize work session |
+| `--session-log --id ID --note "text"` | Append execution notes |
+| `--handoff --id ID` | Generate session handoff summary |
+| `--modified-files [--since-commit REF]` | List modified files |
+| `--sync --id ID [--force]` | Sync story state across files |
+
+### Architecture Decision Records
+| Command | Description |
+|---------|-------------|
+| `--create-adr --title "Decision"` | Create ADR (FR-900-999 range) |
+| `--list-adrs` | List all ADRs with status |
+
+## Documentation Structure
+
+Default directory layout (customizable via `nspec.toml`):
+
+```
+docs/
+├── 10-feature-requests/     # Active FRs
+│   ├── FR-001-feature.md
+│   └── FR-002-another.md
+├── 11-implementation/        # Active IMPLs
+│   ├── IMPL-001-feature.md
+│   └── IMPL-002-another.md
+└── 12-completed/            # Archived work
+    ├── done/
+    ├── superseded/
+    └── rejected/
+```
+
+## Document Formats
+
+### FR (Feature Request)
+```markdown
+# FR-001: Feature Title
+
+**Priority:** 🔥 P0
+**Status:** 🔵 Active
+**Type:** Feature
+deps: [002, 003]
+
+## Overview
+Feature description...
+
+## Acceptance Criteria
+- [ ] AC-F1: First criterion
+- [x] AC-F2: Second criterion (completed)
+- [~] AC-F3: Third criterion (obsolete)
+```
+
+### IMPL (Implementation)
+```markdown
+# IMPL-001: Feature Title
+
+**Status:** 🔵 Active
+**LOE:** 3d
+
+## Tasks
+- [ ] 1. First task
+- [x] 2. Second task (completed)
+  - [ ] 2.1. Subtask
+  - [→220] 2.2. Delegated to story 220
+```
+
+### ADR (Architecture Decision Record)
+ADRs use the FR format in the 900-999 ID range with statuses: DRAFT, PROPOSED, ACCEPTED, DEPRECATED, SUPERSEDED.
+
+## Status Codes
+
+| FR Status | IMPL Status |
+|-----------|-------------|
+| 🟡 Proposed | 🟡 Planning |
+| 🔵 In Design | 🔵 Active |
+| 🔵 Active | 🧪 Testing |
+| ✅ Completed | 🟠 Ready |
+| ❌ Rejected | ⏳ Paused |
+| 🔄 Superseded | ⚪ Hold |
+| ⏳ Deferred | |
+
+## Priority Levels
+
+| Stories | Epics |
+|---------|-------|
+| 🔥 P0 Critical | 🚀 E0 Critical |
+| 🟠 P1 High | 🎯 E1 High |
+| 🟡 P2 Medium | 🎪 E2 Medium |
+| 🔵 P3 Low | 🎨 E3 Low |
+
+## Configuration
+
+Create `nspec.toml` in your project root:
+
+```toml
+[paths]
+feature_requests = "10-feature-requests"    # Relative to docs/
+implementation = "11-implementation"
+completed = "12-completed"
+completed_done = "done"
+completed_superseded = "superseded"
+completed_rejected = "rejected"
+```
+
+Environment variables (`NSPEC_FR_DIR`, `NSPEC_IMPL_DIR`, etc.) override `nspec.toml`. CLI args override everything.
+
+## Development
+
+```bash
+# Install dependencies
+poetry install
+
+# Run tests
+make test
+
+# Fast tests (fail-fast, no coverage)
+make test-quick
+
+# Coverage report
+make test-cov
+
+# All quality checks (format, lint, typecheck)
+make check
+
+# Full CI pipeline
+make ci
+```
+
+## Publishing
+
+```bash
+./release.sh
+```
+
+See [PUBLISHING.md](PUBLISHING.md) for detailed instructions.
+
+## Contributing
+
+Contributions welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Credits
+
+Built with:
+- [Poetry](https://python-poetry.org/) - Dependency management
+- [Textual](https://textual.textualize.io/) - Terminal UI framework
+- [Rich](https://rich.readthedocs.io/) - Terminal formatting
+
