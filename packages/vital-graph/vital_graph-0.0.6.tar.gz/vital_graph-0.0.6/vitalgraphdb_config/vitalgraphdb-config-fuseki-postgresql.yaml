@@ -1,0 +1,107 @@
+# VitalGraph Database Configuration - FUSEKI_POSTGRESQL Hybrid Backend Example
+# This configuration demonstrates how to set up the hybrid backend that combines
+# Fuseki for graph operations with PostgreSQL for metadata and backup
+
+# Backend Configuration - Use 'fuseki_postgresql' for hybrid backend
+backend:
+  type: fuseki_postgresql
+
+# Hybrid Backend Configuration (fuseki_postgresql complete settings)
+# This backend combines Fuseki for graph operations with PostgreSQL for metadata and backup
+fuseki_postgresql:
+  # PostgreSQL connection settings for this backend
+  database:
+    host: localhost
+    port: 5432
+    database: fuseki_sql_graph
+    username: postgres
+    password: 
+    pool_size: 10
+    max_overflow: 20
+    pool_timeout: 30
+    pool_recycle: 3600
+    enable_quad_logging: true  # Enable detailed quad logging in space info operations
+  
+  # Fuseki connection settings for this backend
+  fuseki:
+    server_url: http://localhost:3030
+    dataset_name: vitalgraph
+    username: vitalgraph_user
+    password: vitalgraph_pass
+  
+  # Transaction settings for dual-write operations
+  transaction:
+    timeout: 30                    # Transaction timeout in seconds
+    retry_attempts: 3              # Number of retry attempts on failure
+    rollback_on_fuseki_failure: true  # Rollback PostgreSQL if Fuseki fails
+  
+  # Backup settings for PostgreSQL triple storage
+  backup:
+    enabled: true                  # Enable PostgreSQL backup of triples
+    batch_size: 1000              # Batch size for backup operations
+    compression: false             # Compress backup data (future feature)
+  
+  # SPARQL UPDATE settings
+  sparql:
+    max_query_size: 1048576       # Maximum SPARQL query size (1MB)
+
+tables:
+  prefix: "vitalgraph2_"
+
+auth:
+  root_username: "admin"
+  root_password: "admin"
+
+app:
+  log_level: ERROR
+
+# File Storage Configuration (MinIO for local, S3 for production)
+file_storage:
+  # Backend type: 'minio' for local development, 's3' for production
+  backend: minio
+  
+  # MinIO Configuration (local development/testing)
+  minio:
+    endpoint_url: http://localhost:9000
+    access_key_id: minioadmin
+    secret_access_key: minioadmin
+    bucket_name: vitalgraph-files-local
+    use_ssl: false
+    region: us-east-1
+  
+  # AWS S3 Configuration (production deployments)
+  s3:
+    endpoint_url: null
+    access_key_id: ""
+    secret_access_key: ""
+    bucket_name: vitalgraph-files-prod
+    use_ssl: true
+    region: us-east-1
+  
+  # Common settings for both backends
+  settings:
+    presigned_url_expiration: 3600
+    max_file_size: 104857600
+    chunk_size: 8192
+    allowed_file_types:
+      - .pdf
+      - .jpg
+      - .jpeg
+      - .png
+      - .gif
+      - .docx
+      - .txt
+      - .csv
+      - .json
+      - .xml
+      - .zip
+      - .tar
+      - .gz
+
+# Usage Notes:
+# 1. Ensure both PostgreSQL and Fuseki servers are running
+# 2. PostgreSQL is used for metadata, backup, and transaction management
+# 3. Fuseki is used for primary graph operations and SPARQL queries
+# 4. All SPARQL UPDATEs are dual-written to both systems for consistency
+# 5. Transaction ordering: PostgreSQL first, then Fuseki (with rollback on failure)
+# 6. MinIO should be running on localhost:9000 for file storage (docker run -p 9000:9000 minio/minio server /data)
