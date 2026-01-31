@@ -1,0 +1,579 @@
+# Changelog
+
+## 1.24.0 (2026-01-30)
+
+Full Changelog: [v1.23.1...v1.24.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.23.1...v1.24.0)
+
+### Features
+
+* **client:** add custom JSON encoder for extended type support ([9daf9fc](https://github.com/e-invoice-be/e-invoice-py/commit/9daf9fc26e36847e0001262098bbfa4e5c9f20f2))
+
+## 1.23.1 (2026-01-29)
+
+Full Changelog: [v1.23.0...v1.23.1](https://github.com/e-invoice-be/e-invoice-py/compare/v1.23.0...v1.23.1)
+
+### Bug Fixes
+
+* **docs:** fix mcp installation instructions for remote servers ([185d008](https://github.com/e-invoice-be/e-invoice-py/commit/185d00822a038aead34bac55202721e8c4a0cf39))
+
+
+### Chores
+
+* **ci:** upgrade `actions/github-script` ([3a4b30e](https://github.com/e-invoice-be/e-invoice-py/commit/3a4b30e9b33b57bf56f2aff5e86dd71254c7e2fe))
+
+## 1.23.0 (2026-01-22)
+
+Full Changelog: [v1.22.0...v1.23.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.22.0...v1.23.0)
+
+### Features
+
+* **api:** api update ([cf37a95](https://github.com/e-invoice-be/e-invoice-py/commit/cf37a95af442b7d4cdd8e9325127c8066a9128a6))
+
+## 1.22.0 (2026-01-21)
+
+Full Changelog: [v1.21.0...v1.22.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.21.0...v1.22.0)
+
+### Features
+
+* **api:** api update ([eb272ec](https://github.com/e-invoice-be/e-invoice-py/commit/eb272ecec3067daeec5f399ff29e52d8577c97db))
+* **api:** api update ([3d64adc](https://github.com/e-invoice-be/e-invoice-py/commit/3d64adc5c07f771d1b4d605fd31ba610049b4ffd))
+* **api:** api update ([974a53f](https://github.com/e-invoice-be/e-invoice-py/commit/974a53ffff512c3728367aef1818a80c2a05f4d7))
+
+## 1.21.0 (2026-01-19)
+
+Full Changelog: [v1.20.0...v1.21.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.20.0...v1.21.0)
+
+### Features
+
+* **api:** api update ([640fc1f](https://github.com/e-invoice-be/e-invoice-py/commit/640fc1f1b241f271501a85ed9b6d2cf9d98d1398))
+
+
+### Chores
+
+* **internal:** update `actions/checkout` version ([07783d7](https://github.com/e-invoice-be/e-invoice-py/commit/07783d7cbbf2affa4c539d60097e717a4be945ed))
+
+## 1.20.0 (2026-01-15)
+
+Full Changelog: [v1.19.1...v1.20.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.19.1...v1.20.0)
+
+### Features
+
+* **api:** api update ([aaf54be](https://github.com/e-invoice-be/e-invoice-py/commit/aaf54be624ec5b9706fd1167f470bcd18b3ca80f))
+* **client:** add support for binary request streaming ([37fbe8d](https://github.com/e-invoice-be/e-invoice-py/commit/37fbe8dc8d6d607917d776c51597464735c4ab42))
+
+
+### Chores
+
+* **internal:** add `--fix` argument to lint script ([2150903](https://github.com/e-invoice-be/e-invoice-py/commit/21509036de7a8c0b594b4b0d3f66815176a45164))
+* **internal:** codegen related update ([c0c73f5](https://github.com/e-invoice-be/e-invoice-py/commit/c0c73f5b6b026440581b3e06ca7e5caeaf841a4a))
+
+
+### Documentation
+
+* prominently feature MCP server setup in root SDK readmes ([4d9c935](https://github.com/e-invoice-be/e-invoice-py/commit/4d9c93550ae756a3639b114347142be02ec85b72))
+
+## 1.19.1 (2025-12-18)
+
+Full Changelog: [v1.19.0...v1.19.1](https://github.com/e-invoice-be/e-invoice-py/compare/v1.19.0...v1.19.1)
+
+### Bug Fixes
+
+* use async_to_httpx_files in patch method ([c365027](https://github.com/e-invoice-be/e-invoice-py/commit/c365027ebcbf6623248feeb9d5fe9211689056be))
+
+
+### Chores
+
+* **internal:** add missing files argument to base client ([fad7fa1](https://github.com/e-invoice-be/e-invoice-py/commit/fad7fa166b21b02da19455636cc7cae3f89ce940))
+* speedup initial import ([80df476](https://github.com/e-invoice-be/e-invoice-py/commit/80df47609570eddb744422332122e43b03576e70))
+
+## 1.19.0 (2025-12-11)
+
+Full Changelog: [v1.18.2...v1.19.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.18.2...v1.19.0)
+
+### Features
+
+* **api:** api update ([c2330a3](https://github.com/e-invoice-be/e-invoice-py/commit/c2330a3464d7fd5ec2a893ec87d7aec288fa868c))
+
+
+### Chores
+
+* add missing docstrings ([bae84c5](https://github.com/e-invoice-be/e-invoice-py/commit/bae84c5206f67b4cd54c9d6d15749fde98484abb))
+
+## 1.18.2 (2025-12-09)
+
+Full Changelog: [v1.18.1...v1.18.2](https://github.com/e-invoice-be/e-invoice-py/compare/v1.18.1...v1.18.2)
+
+### Bug Fixes
+
+* **types:** allow pyright to infer TypedDict types within SequenceNotStr ([22b370f](https://github.com/e-invoice-be/e-invoice-py/commit/22b370f8c6c26a03cfad1455b4be392dd0c13c1f))
+
+
+### Chores
+
+* **docs:** use environment variables for authentication in code snippets ([7d365b8](https://github.com/e-invoice-be/e-invoice-py/commit/7d365b88295d887e9973482c8999d328d71d506e))
+* update lockfile ([07fd731](https://github.com/e-invoice-be/e-invoice-py/commit/07fd7311874c0301e1e8cd69026ce3d9cb8bd745))
+
+## 1.18.1 (2025-11-28)
+
+Full Changelog: [v1.18.0...v1.18.1](https://github.com/e-invoice-be/e-invoice-py/compare/v1.18.0...v1.18.1)
+
+### Bug Fixes
+
+* ensure streams are always closed ([5da693a](https://github.com/e-invoice-be/e-invoice-py/commit/5da693a020f3ea1b8414605bc9deffc43844bf5e))
+
+
+### Chores
+
+* add Python 3.14 classifier and testing ([5fca16c](https://github.com/e-invoice-be/e-invoice-py/commit/5fca16cb8292a9eda317a7a8764c249637176fe1))
+* **deps:** mypy 1.18.1 has a regression, pin to 1.17 ([fcd3ab8](https://github.com/e-invoice-be/e-invoice-py/commit/fcd3ab8e69327586fad0c0b090fb0b7296881683))
+
+## 1.18.0 (2025-11-18)
+
+Full Changelog: [v1.17.0...v1.18.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.17.0...v1.18.0)
+
+### Features
+
+* **api:** api update ([b793c57](https://github.com/e-invoice-be/e-invoice-py/commit/b793c5791556b46230e428b6f7fe2a0a99117470))
+
+## 1.17.0 (2025-11-14)
+
+Full Changelog: [v1.16.0...v1.17.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.16.0...v1.17.0)
+
+### Features
+
+* **api:** api update ([172dc7f](https://github.com/e-invoice-be/e-invoice-py/commit/172dc7ffd7686ba946c8ddee5a26058d3b58a989))
+
+## 1.16.0 (2025-11-14)
+
+Full Changelog: [v1.15.0...v1.16.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.15.0...v1.16.0)
+
+### Features
+
+* **api:** api update ([6dc3d5e](https://github.com/e-invoice-be/e-invoice-py/commit/6dc3d5e1aa36564b40d1cb80bde7cef5e6741f68))
+
+## 1.15.0 (2025-11-14)
+
+Full Changelog: [v1.14.2...v1.15.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.14.2...v1.15.0)
+
+### Features
+
+* **api:** api update ([98812f7](https://github.com/e-invoice-be/e-invoice-py/commit/98812f7ddf3b39310c5950335934ce983c3ef1ae))
+
+## 1.14.2 (2025-11-12)
+
+Full Changelog: [v1.14.1...v1.14.2](https://github.com/e-invoice-be/e-invoice-py/compare/v1.14.1...v1.14.2)
+
+### Bug Fixes
+
+* **compat:** update signatures of `model_dump` and `model_dump_json` for Pydantic v1 ([8c4c17c](https://github.com/e-invoice-be/e-invoice-py/commit/8c4c17c3acc0226f66525d3eec509e7d87e4dcf4))
+
+## 1.14.1 (2025-11-11)
+
+Full Changelog: [v1.14.0...v1.14.1](https://github.com/e-invoice-be/e-invoice-py/compare/v1.14.0...v1.14.1)
+
+### Bug Fixes
+
+* compat with Python 3.14 ([d3b330f](https://github.com/e-invoice-be/e-invoice-py/commit/d3b330f657a2f311b9aa521631caa3772d95ed5a))
+
+
+### Chores
+
+* **package:** drop Python 3.8 support ([ddb32a6](https://github.com/e-invoice-be/e-invoice-py/commit/ddb32a65b2bf9ecd34905dc9c80e4a2c05d23943))
+
+## 1.14.0 (2025-11-09)
+
+Full Changelog: [v1.13.0...v1.14.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.13.0...v1.14.0)
+
+### Features
+
+* **api:** api update ([e581e4a](https://github.com/e-invoice-be/e-invoice-py/commit/e581e4ae5ddfdb0574ea6a72e3ea945404a92cfa))
+
+## 1.13.0 (2025-11-06)
+
+Full Changelog: [v1.12.1...v1.13.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.12.1...v1.13.0)
+
+### Features
+
+* **api:** api update ([91e531d](https://github.com/e-invoice-be/e-invoice-py/commit/91e531dbf108c2c8442810cf7c1f84bb839eef24))
+
+
+### Chores
+
+* **internal/tests:** avoid race condition with implicit client cleanup ([df10fa9](https://github.com/e-invoice-be/e-invoice-py/commit/df10fa9908048f36e4093ea1e38f1cc63cb8a0e8))
+* **internal:** grammar fix (it's -&gt; its) ([32c8ecb](https://github.com/e-invoice-be/e-invoice-py/commit/32c8ecb0681408e5847fd7bc6f68303dcff8fcba))
+
+## 1.12.1 (2025-10-30)
+
+Full Changelog: [v1.12.0...v1.12.1](https://github.com/e-invoice-be/e-invoice-py/compare/v1.12.0...v1.12.1)
+
+### Bug Fixes
+
+* **client:** close streams without requiring full consumption ([2c43dee](https://github.com/e-invoice-be/e-invoice-py/commit/2c43dee03358195fff7370bcc3633c83442ffc1f))
+
+
+### Chores
+
+* bump `httpx-aiohttp` version to 0.1.9 ([824d57f](https://github.com/e-invoice-be/e-invoice-py/commit/824d57ff74057fa9e8c1a627013d732705b275fc))
+* **internal:** detect missing future annotations with ruff ([d56ad86](https://github.com/e-invoice-be/e-invoice-py/commit/d56ad8672f7fb7736d24bf37f54c1adde30cee6b))
+
+## 1.12.0 (2025-10-09)
+
+Full Changelog: [v1.11.0...v1.12.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.11.0...v1.12.0)
+
+### Features
+
+* **api:** api update ([3c38811](https://github.com/e-invoice-be/e-invoice-py/commit/3c3881147d0722e18c2fe119cd5e0717987028f1))
+
+## 1.11.0 (2025-10-08)
+
+Full Changelog: [v1.10.0...v1.11.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.10.0...v1.11.0)
+
+### Features
+
+* **api:** manual updates ([f180892](https://github.com/e-invoice-be/e-invoice-py/commit/f180892104dd119e1dcb90647bdaf0736b8b72b6))
+
+## 1.10.0 (2025-10-08)
+
+Full Changelog: [v1.9.0...v1.10.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.9.0...v1.10.0)
+
+### Features
+
+* **api:** api update ([133adbc](https://github.com/e-invoice-be/e-invoice-py/commit/133adbc04e389217c53e8aad9788f56c9ab8bd56))
+
+## 1.9.0 (2025-10-08)
+
+Full Changelog: [v1.8.0...v1.9.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.8.0...v1.9.0)
+
+### Features
+
+* **api:** api update ([48f8db1](https://github.com/e-invoice-be/e-invoice-py/commit/48f8db15be46b87fbc595d50b2e605d1dc2b05b4))
+
+## 1.8.0 (2025-09-23)
+
+Full Changelog: [v1.7.0...v1.8.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.7.0...v1.8.0)
+
+### Features
+
+* **api:** api update ([beea7d2](https://github.com/e-invoice-be/e-invoice-py/commit/beea7d20b83a612dd4a88a5f13cb2878f04b25eb))
+
+
+### Chores
+
+* do not install brew dependencies in ./scripts/bootstrap by default ([1a32118](https://github.com/e-invoice-be/e-invoice-py/commit/1a32118fa332a6c4331f37340979c8f174b0b2a6))
+* **types:** change optional parameter type from NotGiven to Omit ([c0b0cd3](https://github.com/e-invoice-be/e-invoice-py/commit/c0b0cd32b4ac1d7dfc88c5ea5da92650d3117190))
+
+## 1.7.0 (2025-09-17)
+
+Full Changelog: [v1.6.0...v1.7.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.6.0...v1.7.0)
+
+### Features
+
+* **api:** api update ([5ef87d2](https://github.com/e-invoice-be/e-invoice-py/commit/5ef87d2a6d86e8251108d9c406fe09a1d1898b31))
+* improve future compat with pydantic v3 ([feadf8b](https://github.com/e-invoice-be/e-invoice-py/commit/feadf8b3eb3fd183651f53779fd045bc22e5a170))
+* **types:** replace List[str] with SequenceNotStr in params ([ac2abc2](https://github.com/e-invoice-be/e-invoice-py/commit/ac2abc2710ef198e99ce36d076830d53d3d00fa3))
+
+
+### Chores
+
+* **internal:** move mypy configurations to `pyproject.toml` file ([8237446](https://github.com/e-invoice-be/e-invoice-py/commit/8237446ba1104e6d6d42b98d8137b1307e400ef5))
+* **internal:** update pydantic dependency ([e4393f6](https://github.com/e-invoice-be/e-invoice-py/commit/e4393f60093e0a4f5d31d2bb85e1db4686e0b08e))
+* **tests:** simplify `get_platform` test ([5802895](https://github.com/e-invoice-be/e-invoice-py/commit/5802895b9d6ce3947f3da0622cf8718c2ee5103d))
+
+## 1.6.0 (2025-09-02)
+
+Full Changelog: [v1.5.2...v1.6.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.5.2...v1.6.0)
+
+### Features
+
+* **api:** api update ([b34b73f](https://github.com/e-invoice-be/e-invoice-py/commit/b34b73fe55161a5552ddaf4d90954c7701ce80b7))
+
+
+### Chores
+
+* **internal:** add Sequence related utils ([1216641](https://github.com/e-invoice-be/e-invoice-py/commit/1216641e3bf60194b65c0010dcf5c3a4c40efc26))
+
+## 1.5.2 (2025-08-27)
+
+Full Changelog: [v1.5.1...v1.5.2](https://github.com/e-invoice-be/e-invoice-py/compare/v1.5.1...v1.5.2)
+
+### Bug Fixes
+
+* avoid newer type syntax ([ea94154](https://github.com/e-invoice-be/e-invoice-py/commit/ea94154de4f824f35864a0d60c7749d0964c9b7f))
+
+
+### Chores
+
+* **internal:** change ci workflow machines ([fd408d1](https://github.com/e-invoice-be/e-invoice-py/commit/fd408d10ca6538abc22a5b490adb5730e064ff63))
+* **internal:** update pyright exclude list ([1ffaa1b](https://github.com/e-invoice-be/e-invoice-py/commit/1ffaa1bcb7dec84e69d7bb7f6fb064940430ec61))
+* update github action ([a980eec](https://github.com/e-invoice-be/e-invoice-py/commit/a980eec5b88135e0024646394e9174804f80fa60))
+
+## 1.5.1 (2025-08-12)
+
+Full Changelog: [v1.5.0...v1.5.1](https://github.com/e-invoice-be/e-invoice-py/compare/v1.5.0...v1.5.1)
+
+### Chores
+
+* **internal:** codegen related update ([267c580](https://github.com/e-invoice-be/e-invoice-py/commit/267c580508c1ed14f893c3bc51290429e324c938))
+* **internal:** update comment in script ([d094c98](https://github.com/e-invoice-be/e-invoice-py/commit/d094c98404eb3cb780b88a36f008e7d15723d51f))
+* update @stainless-api/prism-cli to v5.15.0 ([0a5faff](https://github.com/e-invoice-be/e-invoice-py/commit/0a5faff67bdeebee5ecfc2ddea3f8e0e04ffb50b))
+
+## 1.5.0 (2025-08-08)
+
+Full Changelog: [v1.4.2...v1.5.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.4.2...v1.5.0)
+
+### Features
+
+* **api:** api update ([1314de4](https://github.com/e-invoice-be/e-invoice-py/commit/1314de4da9421d3aae9893a52384a932c2cafdbe))
+* **client:** support file upload requests ([0addd75](https://github.com/e-invoice-be/e-invoice-py/commit/0addd75076181bc078e4b3ca36fac51a0995fb8f))
+
+
+### Chores
+
+* **internal:** fix ruff target version ([5a9912e](https://github.com/e-invoice-be/e-invoice-py/commit/5a9912efc3fe690afc8b6c2be03733843cb15d7e))
+* **project:** add settings file for vscode ([10c5d7a](https://github.com/e-invoice-be/e-invoice-py/commit/10c5d7a8ea652c0eb9bc9cba89da026fcf1cde1b))
+
+## 1.4.2 (2025-07-23)
+
+Full Changelog: [v1.4.1...v1.4.2](https://github.com/e-invoice-be/e-invoice-py/compare/v1.4.1...v1.4.2)
+
+### Bug Fixes
+
+* **parsing:** parse extra field types ([e954db0](https://github.com/e-invoice-be/e-invoice-py/commit/e954db0daa9f76703e2f76ad58eb5865018f0c72))
+
+## 1.4.1 (2025-07-22)
+
+Full Changelog: [v1.4.0...v1.4.1](https://github.com/e-invoice-be/e-invoice-py/compare/v1.4.0...v1.4.1)
+
+### Bug Fixes
+
+* **parsing:** ignore empty metadata ([69c7659](https://github.com/e-invoice-be/e-invoice-py/commit/69c7659042fca8ef93f4a12b053a28e7e303c218))
+
+## 1.4.0 (2025-07-15)
+
+Full Changelog: [v1.3.7...v1.4.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.3.7...v1.4.0)
+
+### Features
+
+* **api:** manual updates ([001d484](https://github.com/e-invoice-be/e-invoice-py/commit/001d484c462bd0aab6b3a618def015f5fe090abd))
+* clean up environment call outs ([4e0d005](https://github.com/e-invoice-be/e-invoice-py/commit/4e0d005d458af9096176a27fec12cd310d84f96d))
+
+## 1.3.7 (2025-07-11)
+
+Full Changelog: [v1.3.6...v1.3.7](https://github.com/e-invoice-be/e-invoice-py/compare/v1.3.6...v1.3.7)
+
+### Bug Fixes
+
+* **client:** don't send Content-Type header on GET requests ([ba60b4e](https://github.com/e-invoice-be/e-invoice-py/commit/ba60b4e67962745385da6dd8a26d60df18af5de0))
+
+
+### Chores
+
+* **readme:** fix version rendering on pypi ([ceee7c9](https://github.com/e-invoice-be/e-invoice-py/commit/ceee7c97b1a66e52af5d7ebca18a92f7f15c6025))
+
+## 1.3.6 (2025-07-10)
+
+Full Changelog: [v1.3.5...v1.3.6](https://github.com/e-invoice-be/e-invoice-py/compare/v1.3.5...v1.3.6)
+
+### Bug Fixes
+
+* **parsing:** correctly handle nested discriminated unions ([630bd57](https://github.com/e-invoice-be/e-invoice-py/commit/630bd57b4da7fc008a826f38fead3abae23cb865))
+
+
+### Chores
+
+* **internal:** bump pinned h11 dep ([92fb15f](https://github.com/e-invoice-be/e-invoice-py/commit/92fb15f6eb150c3b8d0169f2bc20686092f6f33e))
+* **internal:** codegen related update ([76ca3ed](https://github.com/e-invoice-be/e-invoice-py/commit/76ca3eddfd71f21424ee9bbcabda6f8c6dd46214))
+* **package:** mark python 3.13 as supported ([34f3d13](https://github.com/e-invoice-be/e-invoice-py/commit/34f3d130f8def66ce0c8ec3d9ea9c1b0a6a1c961))
+
+## 1.3.5 (2025-07-02)
+
+Full Changelog: [v1.3.4...v1.3.5](https://github.com/e-invoice-be/e-invoice-py/compare/v1.3.4...v1.3.5)
+
+### Chores
+
+* **ci:** change upload type ([bcd6ac8](https://github.com/e-invoice-be/e-invoice-py/commit/bcd6ac855035693ce19312953d8aaf44500065a3))
+
+## 1.3.4 (2025-06-30)
+
+Full Changelog: [v1.3.3...v1.3.4](https://github.com/e-invoice-be/e-invoice-py/compare/v1.3.3...v1.3.4)
+
+### Bug Fixes
+
+* **ci:** correct conditional ([b2fc172](https://github.com/e-invoice-be/e-invoice-py/commit/b2fc1729d01858664d066ad7bb90ff49283fb75f))
+
+
+### Chores
+
+* **ci:** only run for pushes and fork pull requests ([a2656c6](https://github.com/e-invoice-be/e-invoice-py/commit/a2656c64c2ebc027ecad4cf574afc513031ce459))
+
+## 1.3.3 (2025-06-27)
+
+Full Changelog: [v1.3.2...v1.3.3](https://github.com/e-invoice-be/e-invoice-py/compare/v1.3.2...v1.3.3)
+
+### Bug Fixes
+
+* **ci:** release-doctor — report correct token name ([0c651d2](https://github.com/e-invoice-be/e-invoice-py/commit/0c651d22fa3a4b6ad10304334083ec6f3a3d114b))
+
+## 1.3.2 (2025-06-25)
+
+Full Changelog: [v1.3.1...v1.3.2](https://github.com/e-invoice-be/e-invoice-py/compare/v1.3.1...v1.3.2)
+
+### Chores
+
+* **internal:** codegen related update ([8bdc2f9](https://github.com/e-invoice-be/e-invoice-py/commit/8bdc2f97fcc5a33a18f14295d34188ac3eac1874))
+* **internal:** version bump ([8c7a087](https://github.com/e-invoice-be/e-invoice-py/commit/8c7a087843e1a7dde1587da65d8cf505f34d61de))
+
+## 1.3.1 (2025-06-24)
+
+Full Changelog: [v1.3.0...v1.3.1](https://github.com/e-invoice-be/e-invoice-py/compare/v1.3.0...v1.3.1)
+
+### Chores
+
+* **tests:** skip some failing tests on the latest python versions ([4d9aec8](https://github.com/e-invoice-be/e-invoice-py/commit/4d9aec8c5c7934371dde06daa21af5d11aa64eda))
+
+## 1.3.0 (2025-06-23)
+
+Full Changelog: [v1.2.5...v1.3.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.2.5...v1.3.0)
+
+### Features
+
+* **api:** api update ([58cabf2](https://github.com/e-invoice-be/e-invoice-py/commit/58cabf2574d9485df337393cbaca4b3ba62b74ad))
+* **client:** add support for aiohttp ([3b4cd43](https://github.com/e-invoice-be/e-invoice-py/commit/3b4cd43d7e5e8db43f3e10313b23644d4ec36ac3))
+
+
+### Documentation
+
+* **client:** fix httpx.Timeout documentation reference ([541b277](https://github.com/e-invoice-be/e-invoice-py/commit/541b2776250952e18c6c7d8dc7435e4edbc46027))
+
+## 1.2.5 (2025-06-18)
+
+Full Changelog: [v1.2.4...v1.2.5](https://github.com/e-invoice-be/e-invoice-py/compare/v1.2.4...v1.2.5)
+
+### Bug Fixes
+
+* **tests:** fix: tests which call HTTP endpoints directly with the example parameters ([d6e5d85](https://github.com/e-invoice-be/e-invoice-py/commit/d6e5d851f2026007b07fc5315232acf9fe29c310))
+
+
+### Chores
+
+* **readme:** update badges ([4cd10bf](https://github.com/e-invoice-be/e-invoice-py/commit/4cd10bf54c1333a55efbf55b3cffa5c364869ee0))
+
+## 1.2.4 (2025-06-17)
+
+Full Changelog: [v1.2.3...v1.2.4](https://github.com/e-invoice-be/e-invoice-py/compare/v1.2.3...v1.2.4)
+
+## 1.2.3 (2025-06-17)
+
+Full Changelog: [v1.2.2...v1.2.3](https://github.com/e-invoice-be/e-invoice-py/compare/v1.2.2...v1.2.3)
+
+### Bug Fixes
+
+* Update README.md ([2140387](https://github.com/e-invoice-be/e-invoice-py/commit/2140387032cf5e6c6fd7c224ff462607f9bce861))
+
+## 1.2.2 (2025-06-17)
+
+Full Changelog: [v1.2.1...v1.2.2](https://github.com/e-invoice-be/e-invoice-py/compare/v1.2.1...v1.2.2)
+
+### Chores
+
+* **ci:** enable for pull requests ([4a70384](https://github.com/e-invoice-be/e-invoice-py/commit/4a70384eebb606b75838dd0fd659961c609dc6c1))
+* **internal:** update conftest.py ([6366369](https://github.com/e-invoice-be/e-invoice-py/commit/6366369219a041ea2f7d71adff7612c4bb7ac973))
+* **tests:** add tests for httpx client instantiation & proxies ([6fef8c6](https://github.com/e-invoice-be/e-invoice-py/commit/6fef8c6ccd5d4521e66dba0d9ef3d4898728d829))
+
+## 1.2.1 (2025-06-13)
+
+Full Changelog: [v1.2.0...v1.2.1](https://github.com/e-invoice-be/e-invoice-py/compare/v1.2.0...v1.2.1)
+
+### Bug Fixes
+
+* **client:** correctly parse binary response | stream ([ed989c6](https://github.com/e-invoice-be/e-invoice-py/commit/ed989c6ca76282b848a9eb63644fc473b936d86a))
+* **pagination:** correct next page check ([37e2dce](https://github.com/e-invoice-be/e-invoice-py/commit/37e2dcebbdf5074a8dfc8d8ccad88c4d11f8c346))
+
+
+### Chores
+
+* **tests:** run tests in parallel ([0228226](https://github.com/e-invoice-be/e-invoice-py/commit/02282265dfc4e68be31952864fc68eb651117006))
+
+## 1.2.0 (2025-06-12)
+
+Full Changelog: [v1.1.0...v1.2.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.1.0...v1.2.0)
+
+### Features
+
+* **api:** manual updates ([2fdad47](https://github.com/e-invoice-be/e-invoice-py/commit/2fdad4768cbc674738be3812c7a905b24da1837e))
+
+## 1.1.0 (2025-06-12)
+
+Full Changelog: [v1.0.1...v1.1.0](https://github.com/e-invoice-be/e-invoice-py/compare/v1.0.1...v1.1.0)
+
+### Features
+
+* **api:** manual updates ([25042c2](https://github.com/e-invoice-be/e-invoice-py/commit/25042c2a2a278e2b0a81ad8297616affc7e12d28))
+
+## 1.0.1 (2025-06-11)
+
+Full Changelog: [v1.0.0...v1.0.1](https://github.com/e-invoice-be/e-invoice-py/compare/v1.0.0...v1.0.1)
+
+### Bug Fixes
+
+* typo ([51965e4](https://github.com/e-invoice-be/e-invoice-py/commit/51965e47ba28b7514f67ee968efe9890259e620c))
+
+
+### Chores
+
+* **internal:** version bump ([a49b9c8](https://github.com/e-invoice-be/e-invoice-py/commit/a49b9c85db76555c37ed3163ac8b9b3400dc7533))
+
+## 1.0.0 (2025-06-10)
+
+Full Changelog: [v0.1.0-alpha.3...v1.0.0](https://github.com/e-invoice-be/e-invoice-py/compare/v0.1.0-alpha.3...v1.0.0)
+
+### Chores
+
+* update SDK settings ([65f8ae5](https://github.com/e-invoice-be/e-invoice-py/commit/65f8ae52060c066d6d88d8b32d0e1437a8cb61cc))
+
+## 0.1.0-alpha.3 (2025-06-10)
+
+Full Changelog: [v0.1.0-alpha.2...v0.1.0-alpha.3](https://github.com/e-invoice-be/e-invoice-py/compare/v0.1.0-alpha.2...v0.1.0-alpha.3)
+
+### Features
+
+* **api:** api update ([f5a8196](https://github.com/e-invoice-be/e-invoice-py/commit/f5a81964419d8777b472990f56365ebdea34c029))
+* **client:** add follow_redirects request option ([c395968](https://github.com/e-invoice-be/e-invoice-py/commit/c39596814d57ad3db090a24ff148429679b03f27))
+
+
+### Chores
+
+* **docs:** remove reference to rye shell ([0dc05f6](https://github.com/e-invoice-be/e-invoice-py/commit/0dc05f6c1c1a8346862155ae23422bd60fee7df3))
+
+## 0.1.0-alpha.2 (2025-05-30)
+
+Full Changelog: [v0.1.0-alpha.1...v0.1.0-alpha.2](https://github.com/e-invoice-be/e-invoice-py/compare/v0.1.0-alpha.1...v0.1.0-alpha.2)
+
+### Features
+
+* **api:** manual updates ([b0954e1](https://github.com/e-invoice-be/e-invoice-py/commit/b0954e1357427a7573685d1e14eb8f7007085568))
+
+
+### Chores
+
+* sync repo ([d7d024c](https://github.com/e-invoice-be/e-invoice-py/commit/d7d024c67978e805e5fa7c34bda753dd5ca84868))
+* update SDK settings ([15f7d70](https://github.com/e-invoice-be/e-invoice-py/commit/15f7d7061d77d0d8f3adc51196fcf11ef1845e1b))
+
+## 0.1.0-alpha.1 (2025-05-30)
+
+Full Changelog: [v0.0.1-alpha.0...v0.1.0-alpha.1](https://github.com/e-invoice-be/e-invoice-api-sdk-py/compare/v0.0.1-alpha.0...v0.1.0-alpha.1)
+
+### Features
+
+* **api:** api update ([83eeaf0](https://github.com/e-invoice-be/e-invoice-api-sdk-py/commit/83eeaf0a5ff0c97328e6e1f9a83ae85401c29b24))
+* **api:** manual updates ([8e2b6fd](https://github.com/e-invoice-be/e-invoice-api-sdk-py/commit/8e2b6fdbdf5dbb924730f3d21129822f76c3681b))
+* **api:** manual updates ([caf28f0](https://github.com/e-invoice-be/e-invoice-api-sdk-py/commit/caf28f07f11798707e249444f04600a1ac461110))
+* **api:** update via SDK Studio ([4dab89b](https://github.com/e-invoice-be/e-invoice-api-sdk-py/commit/4dab89b520bd6891b329a6e0b031468eb7c96948))
+* **api:** update via SDK Studio ([3ab411e](https://github.com/e-invoice-be/e-invoice-api-sdk-py/commit/3ab411e843b369f9d3a83596217428c7a663025d))
+* **api:** update via SDK Studio ([f21ce20](https://github.com/e-invoice-be/e-invoice-api-sdk-py/commit/f21ce20df9505ccc85d9578b68b3ceade2e70d66))
+
+
+### Chores
+
+* configure new SDK language ([66045d6](https://github.com/e-invoice-be/e-invoice-api-sdk-py/commit/66045d60d0bada2ccada1e97bc22f62b92215841))
+* update SDK settings ([5e9a7d7](https://github.com/e-invoice-be/e-invoice-api-sdk-py/commit/5e9a7d71f7c28d53a849c4766e115af2032c76c8))
