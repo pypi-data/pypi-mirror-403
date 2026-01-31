@@ -1,0 +1,46 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Vaddlkk/ConsoleType/refs/heads/main/assets/logo.png" width="700">
+</p>
+<hr>
+
+[![Python](https://img.shields.io/badge/Python-3.8%20%E2%80%93%203.14-3776AB?style=flat&logo=python&logoColor=white)](https://python.org)
+[![Github](https://img.shields.io/badge/-GitHub-181717?style=flat&logo=github)](https://github.com/Vaddlkk/ConsoleType)
+
+<hr>
+</div>
+
+## Features
+
+### Prints
+Creates a slider-like animation in the terminal.  
+First, you specify the object that will move (for example `|-|`),  
+then the time it takes for the object to move one character (in seconds),  
+and finally the length of the area in which it moves.
+
+```python
+# Import the module
+from consoletype import prints
+
+# The function
+prints("|-|", 1, 12)
+```
+This will output:
+```commandline
+-|-|------------
+```
+
+### Get
+Performs a standard GET request to the URL you provide.
+```python
+# Import the module
+from consoletype import get
+
+# Ask the user for a website URL
+url = input(">>")
+
+# Print the page content after sending the request
+print(get(url))
+```
+This will output the page content or the HTML source code.
+```html
+```
