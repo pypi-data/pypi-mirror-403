@@ -1,0 +1,25 @@
+"""Process domain module.
+
+Provides process/operation management for test operations and repair operations.
+
+This module handles the process list which defines:
+- Test operations (e.g., End of line test, PCBA test, etc.)
+- Repair operations (e.g., Repair, RMA repair)
+- WIP operations
+"""
+from .models import ProcessInfo, RepairOperationConfig, RepairCategory, FailureCodeInfo
+
+# Async implementations (primary API)
+from .async_repository import AsyncProcessRepository
+from .async_service import AsyncProcessService
+
+__all__ = [
+    # Models
+    "ProcessInfo",
+    "RepairOperationConfig",
+    "RepairCategory",
+    "FailureCodeInfo",
+    # Async implementations
+    "AsyncProcessRepository",
+    "AsyncProcessService",
+]
