@@ -1,0 +1,204 @@
+from http import HTTPStatus
+from typing import Any
+from urllib.parse import quote
+
+import httpx
+
+from ... import errors
+from ...client import AuthenticatedClient, Client
+from ...models.add_member_request import AddMemberRequest
+from ...models.http_validation_error import HTTPValidationError
+from ...models.org_member import OrgMember
+from ...types import Response
+
+
+def _get_kwargs(
+    org_id: str,
+    *,
+    body: AddMemberRequest,
+    authorization: str,
+) -> dict[str, Any]:
+    headers: dict[str, Any] = {}
+    headers["authorization"] = authorization
+
+    _kwargs: dict[str, Any] = {
+        "method": "post",
+        "url": "/orgs/{org_id}/members".format(
+            org_id=quote(str(org_id), safe=""),
+        ),
+    }
+
+    _kwargs["json"] = body.to_dict()
+
+    headers["Content-Type"] = "application/json"
+
+    _kwargs["headers"] = headers
+    return _kwargs
+
+
+def _parse_response(
+    *, client: AuthenticatedClient | Client, response: httpx.Response
+) -> HTTPValidationError | OrgMember | None:
+    if response.status_code == 200:
+        response_200 = OrgMember.from_dict(response.json())
+
+        return response_200
+
+    if response.status_code == 422:
+        response_422 = HTTPValidationError.from_dict(response.json())
+
+        return response_422
+
+    if client.raise_on_unexpected_status:
+        raise errors.UnexpectedStatus(response.status_code, response.content)
+    else:
+        return None
+
+
+def _build_response(
+    *, client: AuthenticatedClient | Client, response: httpx.Response
+) -> Response[HTTPValidationError | OrgMember]:
+    return Response(
+        status_code=HTTPStatus(response.status_code),
+        content=response.content,
+        headers=response.headers,
+        parsed=_parse_response(client=client, response=response),
+    )
+
+
+def sync_detailed(
+    org_id: str,
+    *,
+    client: AuthenticatedClient | Client,
+    body: AddMemberRequest,
+    authorization: str,
+) -> Response[HTTPValidationError | OrgMember]:
+    """Add Member
+
+     Add a member to organization. Requires admin role.
+
+    Args:
+        org_id (str):
+        authorization (str):
+        body (AddMemberRequest): Request to add a member to an organization.
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[HTTPValidationError | OrgMember]
+    """
+
+    kwargs = _get_kwargs(
+        org_id=org_id,
+        body=body,
+        authorization=authorization,
+    )
+
+    response = client.get_httpx_client().request(
+        **kwargs,
+    )
+
+    return _build_response(client=client, response=response)
+
+
+def sync(
+    org_id: str,
+    *,
+    client: AuthenticatedClient | Client,
+    body: AddMemberRequest,
+    authorization: str,
+) -> HTTPValidationError | OrgMember | None:
+    """Add Member
+
+     Add a member to organization. Requires admin role.
+
+    Args:
+        org_id (str):
+        authorization (str):
+        body (AddMemberRequest): Request to add a member to an organization.
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        HTTPValidationError | OrgMember
+    """
+
+    return sync_detailed(
+        org_id=org_id,
+        client=client,
+        body=body,
+        authorization=authorization,
+    ).parsed
+
+
+async def asyncio_detailed(
+    org_id: str,
+    *,
+    client: AuthenticatedClient | Client,
+    body: AddMemberRequest,
+    authorization: str,
+) -> Response[HTTPValidationError | OrgMember]:
+    """Add Member
+
+     Add a member to organization. Requires admin role.
+
+    Args:
+        org_id (str):
+        authorization (str):
+        body (AddMemberRequest): Request to add a member to an organization.
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[HTTPValidationError | OrgMember]
+    """
+
+    kwargs = _get_kwargs(
+        org_id=org_id,
+        body=body,
+        authorization=authorization,
+    )
+
+    response = await client.get_async_httpx_client().request(**kwargs)
+
+    return _build_response(client=client, response=response)
+
+
+async def asyncio(
+    org_id: str,
+    *,
+    client: AuthenticatedClient | Client,
+    body: AddMemberRequest,
+    authorization: str,
+) -> HTTPValidationError | OrgMember | None:
+    """Add Member
+
+     Add a member to organization. Requires admin role.
+
+    Args:
+        org_id (str):
+        authorization (str):
+        body (AddMemberRequest): Request to add a member to an organization.
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        HTTPValidationError | OrgMember
+    """
+
+    return (
+        await asyncio_detailed(
+            org_id=org_id,
+            client=client,
+            body=body,
+            authorization=authorization,
+        )
+    ).parsed
