@@ -1,0 +1,1 @@
+#print("NOTE: This module is not supposed to be imported as there is no use that way\nExecute the CLI command 'turtlelab' to launch the lab")
