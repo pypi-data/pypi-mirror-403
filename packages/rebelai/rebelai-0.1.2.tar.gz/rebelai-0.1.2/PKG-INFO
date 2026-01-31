@@ -1,0 +1,156 @@
+Metadata-Version: 2.4
+Name: rebelai
+Version: 0.1.2
+Summary: Text to physics simulation in one line. Generate MuJoCo models from text prompts.
+Project-URL: Homepage, https://github.com/rebelai/rebelai
+Project-URL: Documentation, https://github.com/rebelai/rebelai#readme
+Project-URL: Repository, https://github.com/rebelai/rebelai
+Project-URL: Issues, https://github.com/rebelai/rebelai/issues
+Author-email: RebelAI <hello@rebelai.dev>
+License-Expression: MIT
+License-File: LICENSE
+Keywords: convex-decomposition,gltf,mesh,mujoco,physics,robotics,simulation,world-labs
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Multimedia :: Graphics :: 3D Modeling
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Scientific/Engineering :: Physics
+Requires-Python: >=3.10
+Requires-Dist: coacd>=1.0.0
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: mujoco>=3.0.0
+Requires-Dist: numpy>=1.24.0
+Requires-Dist: trimesh>=4.0.0
+Provides-Extra: dev
+Requires-Dist: black>=24.0.0; extra == 'dev'
+Requires-Dist: pytest>=7.4.0; extra == 'dev'
+Requires-Dist: ruff>=0.1.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# RebelAI
+
+**Text → Physics Simulation in one line.**
+```python
+import rebelai
+
+model = rebelai.generate("kitchen table with coffee mugs")
+# That's it. You have a physics-ready MuJoCo model.
+```
+
+## The Problem
+
+You want to simulate a robot in a realistic environment. Today that means:
+- Manually modeling scenes in Blender (hours)
+- Writing collision geometry by hand (tedious)
+- Tuning physics properties (trial and error)
+
+## The Solution
+
+Describe what you want. Get a MuJoCo model.
+```python
+import rebelai
+import mujoco
+
+# Generate any scene from text
+model = rebelai.generate("cluttered office desk with laptop and coffee cup")
+
+# Full MuJoCo API - do whatever you want
+data = mujoco.MjData(model)
+mujoco.mj_step(model, data)
+```
+
+RebelAI handles:
+- **World Labs API** → Generate 3D scenes from text
+- **Collision geometry** → Automatic convex decomposition
+- **Physics properties** → Mass, friction, contacts
+- **MJCF generation** → Ready for MuJoCo
+
+## Install
+```bash
+pip install rebelai
+```
+
+## Quick Start
+```bash
+# Set your World Labs API key
+export WORLD_LABS_API_KEY="wl_xxx"
+```
+```python
+import rebelai
+
+# From text prompt
+model = rebelai.generate("red sports car on a driveway")
+
+# Or from existing mesh file
+model = rebelai.load("scene.glb")
+```
+
+## Why RebelAI?
+
+| Without RebelAI | With RebelAI |
+|-----------------|--------------|
+| Model scene in Blender | `generate("kitchen")` |
+| Export, fix mesh issues | Automatic |
+| Write collision geometry | Automatic |
+| Tune mass/friction | Automatic |
+| Debug MJCF XML | Just works |
+
+---
+
+## Configuration
+
+```python
+from rebelai import generate, ConversionConfig, CollisionMethod
+
+config = ConversionConfig(
+    collision_method=CollisionMethod.CONVEX_DECOMPOSITION,
+    coacd_threshold=0.08,  # Coarser = fewer hulls, faster sim
+    density=500.0,         # kg/m³
+)
+
+model = generate("wooden desk", config=config)
+```
+
+### Collision Methods
+
+| Method | Description |
+|--------|-------------|
+| `CONVEX_DECOMPOSITION` | Multiple convex hulls via CoACD (default) |
+| `CONVEX_HULL` | Single convex hull |
+| `BOUNDING_BOX` | Axis-aligned box |
+| `PRIMITIVES` | Fit box/sphere/cylinder |
+
+### Error Handling
+
+```python
+from rebelai import generate, WorldLabsAuthError, WorldLabsAPIError
+
+try:
+    model = generate("office chair")
+except WorldLabsAuthError:
+    print("Check your API key")
+except WorldLabsAPIError as e:
+    print(f"Generation failed: {e}")
+```
+
+## API Reference
+
+### `rebelai.generate(prompt, api_key=None, config=None, quality="standard")`
+Generate scene from text → MuJoCo model
+
+### `rebelai.load(source, config=None)`
+Load mesh file → MuJoCo model
+
+### `rebelai.to_mjcf(source, config=None)`
+Convert mesh → MJCF XML string
+
+## License
+
+MIT
