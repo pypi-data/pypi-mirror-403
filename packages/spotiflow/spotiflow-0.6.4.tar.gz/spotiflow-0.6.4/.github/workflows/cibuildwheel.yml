@@ -1,0 +1,255 @@
+# ported and adapted from:
+# - https://github.com/stardist/stardist/blob/main/.github/workflows/cibuildwheel.yaml
+
+name: tests
+
+on:
+  push:
+    branches:
+      - main
+      - wheels
+  release:
+    types:
+      - published
+  pull_request:
+      branches: [ "main" ]
+
+jobs:
+  build_wheels:
+    name: Build cp${{ matrix.python }}-${{ matrix.platform_id }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    # for conda-incubator/setup-miniconda to work
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux
+          - os: ubuntu-latest
+            python: 39
+            platform_id: manylinux_x86_64
+            manylinux_image: manylinux_2_28
+            run_on_main_push: false
+          - os: ubuntu-latest
+            python: 310
+            platform_id: manylinux_x86_64
+            manylinux_image: manylinux_2_28
+            run_on_main_push: false
+          - os: ubuntu-latest
+            python: 311
+            platform_id: manylinux_x86_64
+            manylinux_image: manylinux_2_28
+            run_on_main_push: false
+          - os: ubuntu-latest
+            python: 312
+            platform_id: manylinux_x86_64
+            manylinux_image: manylinux_2_28
+            run_on_main_push: true
+          - os: ubuntu-latest
+            python: 313
+            platform_id: manylinux_x86_64
+            manylinux_image: manylinux_2_28
+            run_on_main_push: true
+          - os: ubuntu-latest
+            python: 314
+            platform_id: manylinux_x86_64
+            manylinux_image: manylinux_2_28
+            run_on_main_push: true
+            
+          # Windows
+          - os: windows-latest
+            python: 39
+            platform_id: win_amd64
+            run_on_main_push: false
+          - os: windows-latest
+            python: 310
+            platform_id: win_amd64
+            run_on_main_push: false
+          - os: windows-latest
+            python: 311
+            platform_id: win_amd64
+            run_on_main_push: false
+          - os: windows-latest
+            python: 312
+            platform_id: win_amd64
+            run_on_main_push: false
+          - os: windows-latest
+            python: 313
+            platform_id: win_amd64
+            run_on_main_push: false
+          - os: windows-latest
+            python: 314
+            platform_id: win_amd64
+            run_on_main_push: true
+          
+          # FIXME 
+          # # macOS x86_64 (missing torchvision wheels for py313+)
+          # - os: macos-15-intel
+          #   python: 39
+          #   platform_id: macosx_x86_64
+          #   run_on_main_push: false
+          # - os: macos-15-intel
+          #   python: 310
+          #   platform_id: macosx_x86_64
+          #   run_on_main_push: false
+          # - os: macos-15-intel
+          #   python: 311
+          #   platform_id: macosx_x86_64
+          #   run_on_main_push: false
+          # - os: macos-15-intel
+          #   python: 312
+          #   platform_id: macosx_x86_64
+          #   run_on_main_push: true
+            
+          # macOS arm64            
+          - os: macos-14
+            python: 39
+            platform_id: macosx_arm64
+            run_on_main_push: false
+          - os: macos-14
+            python: 310
+            platform_id: macosx_arm64
+            run_on_main_push: false
+          - os: macos-14
+            python: 311
+            platform_id: macosx_arm64
+            run_on_main_push: false
+          - os: macos-14
+            python: 312
+            platform_id: macosx_arm64
+            run_on_main_push: false
+          - os: macos-14
+            python: 313
+            platform_id: macosx_arm64
+            run_on_main_push: false
+          - os: macos-14
+            python: 314
+            platform_id: macosx_arm64
+            run_on_main_push: true
+
+    steps:
+      # skip based on event type and build condition
+      - name: Skip build check
+        id: skip_check
+        run: |
+          SKIP=false
+          
+          # pushes to main
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" != *"wheels"* ]]; then
+            if [[ "${{ matrix.run_on_main_push }}" == "false" ]]; then
+              SKIP=true
+            fi
+          fi
+
+          echo "skip=$SKIP" >> $GITHUB_OUTPUT
+          if [[ "$SKIP" == "true" ]]; then
+            echo "Skipping low priority build for ${{ matrix.os }} Python ${{ matrix.python }} on push event"
+          else
+            echo "Running build for ${{ matrix.os }} Python ${{ matrix.python }} (run_on_main_push: ${{ matrix.run_on_main_push }})"
+          fi
+
+      - name: Checkout repository
+        if: steps.skip_check.outputs.skip != 'true'
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        if: steps.skip_check.outputs.skip != 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        if: ${{ steps.skip_check.outputs.skip != 'true' && startsWith(matrix.platform_id, 'macosx') }}
+        with:
+          miniforge-version: latest
+
+      - name: Build and test wheels
+        if: steps.skip_check.outputs.skip != 'true'
+        run: |
+          set -ex
+          # follow approach of scikit-learn: https://github.com/scikit-learn/scikit-learn/blob/7f0900c265936eac9a89bba37eb19ee66208d46a/build_tools/wheels/build_wheels.sh
+          if [[ $(uname) == "Darwin" ]]; then
+            if [[ "$CIBW_BUILD" == *-macosx_arm64 ]]; then
+              # SciPy requires 12.0 on arm to prevent kernel panics
+              # https://github.com/scipy/scipy/issues/14688
+              export MACOSX_DEPLOYMENT_TARGET=12.0
+              OPENMP_URL="https://anaconda.org/conda-forge/llvm-openmp/11.1.0/download/osx-arm64/llvm-openmp-11.1.0-hf3c4609_1.tar.bz2"
+            else
+              export MACOSX_DEPLOYMENT_TARGET=10.9
+              OPENMP_URL="https://anaconda.org/conda-forge/llvm-openmp/11.1.0/download/osx-64/llvm-openmp-11.1.0-hda6cdc1_1.tar.bz2"
+            fi
+            echo MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET}
+
+            conda create -n build $OPENMP_URL
+            PREFIX="$HOME/miniconda3/envs/build"
+            export CC=/usr/bin/clang
+            export CXX=/usr/bin/clang++
+            export CFLAGS="$CFLAGS -I$PREFIX/include"
+            export CXXFLAGS="$CXXFLAGS -I$PREFIX/include"
+            export LDFLAGS="$LDFLAGS -Wl,-rpath,$PREFIX/lib -L$PREFIX/lib -lomp"
+          fi
+          python -m pip install cibuildwheel
+          python -m cibuildwheel --output-dir dist
+        env:
+          CIBW_BUILD: cp${{ matrix.python }}-${{ matrix.platform_id }}
+          CIBW_ARCHS: all
+          CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.manylinux_image }}
+          CIBW_BUILD_VERBOSITY: 1
+          CIBW_TEST_REQUIRES: pytest pytest-cov
+          CIBW_TEST_COMMAND: pytest -v --cov=spotiflow {project}
+
+      - name: Upload wheels
+        if: steps.skip_check.outputs.skip != 'true'
+        uses: actions/upload-artifact@v5
+        with:
+          name: cibw-wheels-cp${{ matrix.python }}-${{ matrix.platform_id }}
+          path: dist/*.whl
+
+
+  build_sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Build sdist
+        run: pipx run build --sdist
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v5
+        with:
+          name: cibw-sdist
+          path: dist/*.tar.gz
+
+
+  upload_pypi:
+    name: Upload to PyPI
+    needs: [build_wheels, build_sdist]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.action == 'published'
+    steps:
+      - name: Download wheels and sdist
+        uses: actions/download-artifact@v6
+        with:
+          pattern: cibw-*
+          path: dist
+          merge-multiple: true
+
+      - name: Check that package version matches git tag ${{ github.ref_name }}
+        shell: bash
+        run: |
+          ls -l dist
+          test -f "dist/spotiflow-${{ github.ref_name }}.tar.gz"
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          verbose: true
