@@ -1,0 +1,796 @@
+Metadata-Version: 2.4
+Name: tai-api
+Version: 0.2.19
+Summary: FastAPI framework with TAI ecosystem integration
+License: MIT
+License-File: LICENSE
+Keywords: fastapi,api,tai,web-framework
+Author: MateoSaezMata
+Author-email: msaez@triplealpha.in
+Requires-Python: >=3.10,<4.0
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Framework :: FastAPI
+Classifier: Topic :: Internet :: WWW/HTTP
+Classifier: Topic :: Software Development :: Libraries :: Application Frameworks
+Requires-Dist: asyncpg (>=0.30.0,<1.0)
+Requires-Dist: fastapi[standard] (>=0.116.1,<1.0)
+Requires-Dist: python-jose (>=3.5.0,<4.0)
+Requires-Dist: tai-sql (>=0.3.59,<1.0)
+Requires-Dist: uvicorn[standard] (>=0.30.0,<1.0)
+Project-URL: Homepage, https://www.triplealpha.in/es/
+Project-URL: Issues, https://github.com/triplealpha-innovation/tai-api/issues
+Project-URL: Repository, https://github.com/triplealpha-innovation/tai-api
+Description-Content-Type: text/markdown
+
+# TAI-API
+
+**TAI-API** es un framework ágil para el desarrollo de APIs REST basado en FastAPI, diseñado para acelerar la creación de APIs robustas y escalables mediante generación automática de código. Forma parte del ecosistema TAI (Triple Alpha Innovation) y se integra perfectamente con `tai-sql` para ofrecer una solución completa desde la base de datos hasta los endpoints.
+
+## 🚀 Características Principales
+
+- **Generación Automática de Endpoints CRUD**: Crea endpoints completos automáticamente a partir de tu esquema de base de datos
+- **CLI Intuitivo**: Comandos simples para inicializar, generar y gestionar tu API
+- **Soporte Multi-Schema**: Gestiona múltiples esquemas de base de datos en un solo proyecto
+- **Autenticación Integrada**: Soporte nativo para autenticación por base de datos o Keycloak
+- **Operaciones Avanzadas**: Endpoints para agregaciones, conteos, existencia, y consultas complejas
+- **Relaciones Automáticas**: Carga eager loading de relaciones con el parámetro `includes`
+- **Paginación y Filtrado**: Soporte completo para paginación, ordenamiento y filtrado dinámico
+- **Model Context Protocol (MCP)**: Exposición de endpoints vía MCP para integración con herramientas AI
+- **Documentación OpenAPI**: Documentación interactiva generada automáticamente con Swagger UI
+- **Type Safety**: Validación de datos con Pydantic y tipado completo
+
+## 📋 Requisitos
+
+- Python >= 3.10
+- Poetry (para gestión de dependencias)
+- PostgreSQL (como base de datos)
+- tai-sql >= 0.3.59
+
+## 🔧 Instalación
+
+```bash
+pip install tai-api
+```
+
+O con Poetry:
+
+```bash
+poetry add tai-api
+```
+
+## 🎯 Inicio Rápido
+
+### 1. Inicializar un Proyecto
+
+```bash
+tai-api init mi-proyecto --namespace api
+```
+
+Este comando:
+- Crea la estructura de directorios del proyecto
+- Configura Poetry y las dependencias necesarias
+- Genera archivos de configuración
+- Crea recursos Docker para desarrollo
+- Establece el namespace de la aplicación (por defecto: `api`)
+
+### 2. Configurar la Base de Datos
+
+Primero, inicializa la configuración de `tai-sql`:
+
+```bash
+tai-sql init
+```
+
+Define tu esquema de base de datos y realiza la introspección:
+
+```bash
+tai-sql introspect --schema public
+```
+
+### 3. Generar la API
+
+```bash
+tai-api generate --schema public
+```
+
+Este comando genera automáticamente:
+- **Modelos Pydantic** para validación de datos
+- **CRUD asíncrono** para operaciones de base de datos
+- **Routers de FastAPI** con endpoints completos
+- **Archivos de inicialización** con importaciones correctas
+- **Diagramas ER** de la base de datos
+
+### 4. Ejecutar en Modo Desarrollo
+
+```bash
+tai-api dev
+```
+
+Tu API estará disponible en `http://localhost:8000` con:
+- Documentación Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+- OpenAPI Schema: `http://localhost:8000/openapi.json`
+
+## 📚 Comandos del CLI
+
+### `tai-api init`
+
+Inicializa un nuevo proyecto TAI-API.
+
+```bash
+tai-api init <nombre-proyecto> [OPTIONS]
+```
+
+**Argumentos:**
+- `project`: Nombre del proyecto a crear
+
+**Opciones:**
+- `-n, --namespace`: Nombre del namespace/módulo Python (por defecto: `api`)
+
+**Ejemplo:**
+```bash
+tai-api init ecommerce-api --namespace backend
+```
+
+**Estructura Generada:**
+```
+ecommerce-api/
+├── backend/
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── __dev__.py
+│   ├── database/
+│   │   └── public/
+│   │       ├── crud/
+│   │       └── models/
+│   ├── diagrams/
+│   ├── resources/
+│   │   ├── __init__.py
+│   │   ├── exceptions.py
+│   │   ├── handlers.py
+│   │   ├── mcp.py
+│   │   └── responses.py
+│   └── routers/
+│       └── database/
+├── docker/
+│   ├── dockerfile
+│   └── entrypoint.sh
+└── pyproject.toml
+```
+
+---
+
+### `tai-api generate`
+
+**El comando más importante del CLI.** Genera todos los recursos de la API basándose en el esquema de base de datos.
+
+```bash
+tai-api generate [OPTIONS]
+```
+
+**Opciones:**
+- `-s, --schema <nombre>`: Genera recursos para un esquema específico
+- `--all`: Genera recursos para todos los esquemas descubiertos
+
+**Ejemplos:**
+```bash
+# Generar para el esquema por defecto
+tai-api generate
+
+# Generar para un esquema específico
+tai-api generate --schema public
+
+# Generar para todos los esquemas
+tai-api generate --all
+```
+
+#### ¿Qué Genera?
+
+Para cada tabla en el esquema, el comando `generate` crea:
+
+1. **Modelos Pydantic** (`database/{schema}/models/`)
+   - DTOs para lectura (Read)
+   - DTOs para creación (Create)
+   - DTOs para actualización (Update)
+   
+2. **CRUD Asíncrono** (`database/{schema}/crud/`)
+   - Operaciones CRUD completas
+   - Métodos de agregación
+   - Soporte para transacciones
+   
+3. **Routers de FastAPI** (`routers/database/{schema}/`)
+   - Un archivo `router_{tabla}.py` por cada tabla
+   - Un archivo `router_enums.py` con todos los enums
+   - Archivo `__init__.py` con agregación de routers
+
+4. **Diagramas ER** (`diagrams/`)
+   - Representación visual del esquema
+
+#### Tipos de Endpoints Generados
+
+Para cada tabla, se generan automáticamente los siguientes endpoints:
+
+##### 🔍 **Consulta y Búsqueda**
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/{tabla}` | GET | Lista todos los registros con filtrado, paginación y ordenamiento |
+| `/{tabla}/{id}` | GET | Obtiene un registro específico por su clave primaria |
+| `/{tabla}/count` | GET | Cuenta registros que coinciden con los filtros |
+| `/{tabla}/exists` | GET | Verifica si existe al menos un registro con los filtros |
+
+**Ejemplo de uso:**
+```bash
+# Listar usuarios con paginación
+GET /usuario?limit=10&offset=0&order_by=created_at&order=DESC
+
+# Buscar usuario por id
+GET /usuario/123
+
+# Contar usuarios activos
+GET /usuario/count?active=true
+
+# Verificar si existe un email
+GET /usuario/exists?email=test@example.com
+```
+
+##### 📊 **Operaciones de Agregación**
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/{tabla}/{campo}/sum` | GET | Suma todos los valores de un campo numérico |
+| `/{tabla}/{campo}/mean` | GET | Calcula el promedio de un campo numérico |
+| `/{tabla}/{campo}/max` | GET | Obtiene el valor máximo de un campo |
+| `/{tabla}/{campo}/min` | GET | Obtiene el valor mínimo de un campo |
+| `/{tabla}/agg` | POST | Realiza múltiples agregaciones en una sola consulta |
+
+**Ejemplo de uso:**
+```bash
+# Suma total de ventas
+GET /venta/monto/sum
+
+# Precio promedio de productos
+GET /producto/precio/mean
+
+# Agregaciones múltiples
+POST /venta/agg
+{
+  "aggregations": [
+    {"field": "monto", "operation": "sum"},
+    {"field": "monto", "operation": "mean"},
+    {"field": "cantidad", "operation": "max"}
+  ]
+}
+```
+
+##### ✏️ **Creación y Modificación**
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/{tabla}` | POST | Crea un nuevo registro |
+| `/{tabla}/{id}` | PATCH | Actualiza parcialmente un registro específico |
+| `/{tabla}` | PATCH | Actualiza múltiples registros que coincidan con filtros |
+
+**Ejemplo de uso:**
+```bash
+# Crear nuevo usuario
+POST /usuario
+{
+  "nombre": "Juan Pérez",
+  "email": "juan@example.com",
+  "active": true
+}
+
+# Actualizar usuario específico
+PATCH /usuario/123
+{
+  "nombre": "Juan P. Actualizado"
+}
+
+# Actualizar múltiples usuarios
+PATCH /usuario?active=false
+{
+  "estado": "inactivo"
+}
+```
+
+##### 🗑️ **Eliminación**
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/{tabla}/{id}` | DELETE | Elimina un registro específico por su clave primaria |
+
+**Ejemplo de uso:**
+```bash
+DELETE /usuario/123
+```
+
+##### 🔗 **Relaciones y Carga Eager**
+
+Todos los endpoints de consulta soportan el parámetro `includes` para cargar relaciones asociadas en una sola consulta:
+
+```bash
+# Usuario con sus posts
+GET /usuario/123?includes=posts
+
+# Usuario con posts y comentarios de cada post
+GET /usuario/123?includes=posts.comments
+
+# Múltiples relaciones
+GET /usuario/123?includes=posts,profile,roles
+```
+
+##### 📋 **Enumeraciones**
+
+Se genera un router especial `router_enums.py` con endpoints para obtener todos los valores de enumeraciones definidas:
+
+```bash
+# Listar todos los valores de un enum
+GET /enums/estado-usuario
+
+# Ejemplo de respuesta
+{
+  "status": "success",
+  "data": ["active", "inactive", "pending", "blocked"],
+  "message": "Enumeración obtenida exitosamente"
+}
+```
+
+#### Características de los Endpoints
+
+Todos los endpoints generados incluyen:
+
+- ✅ **Validación automática** de datos con Pydantic
+- ✅ **Manejo de errores** centralizado con respuestas consistentes
+- ✅ **Documentación OpenAPI** completa con ejemplos
+- ✅ **Type hints** completos para autocompletado IDE
+- ✅ **Logging** integrado con tai-alphi
+- ✅ **Filtrado dinámico** por cualquier campo
+- ✅ **Ordenamiento** por múltiples campos
+- ✅ **Paginación** con limit/offset
+- ✅ **Metadatos** de paginación en respuestas
+- ✅ **Soporte CORS** configurable
+- ✅ **Compresión** de respuestas (gzip)
+
+#### Estructura de Respuestas
+
+Todos los endpoints siguen el formato estándar `APIResponse`:
+
+```json
+{
+  "status": "success",
+  "data": { /* datos del recurso */ },
+  "message": "Operación exitosa",
+  "errors": null,
+  "meta": {
+    "total": 100,
+    "limit": 10,
+    "offset": 0
+  }
+}
+```
+
+En caso de error:
+
+```json
+{
+  "status": "error",
+  "data": null,
+  "message": "Error en la operación",
+  "errors": [
+    {
+      "code": "VALIDATION_ERROR",
+      "message": "El email es inválido",
+      "field": "email",
+      "details": null
+    }
+  ],
+  "meta": null
+}
+```
+
+---
+
+### `tai-api set-auth`
+
+Configura el sistema de autenticación para la API.
+
+```bash
+tai-api set-auth
+```
+
+Este comando inicia un asistente interactivo que te guía a través de las opciones de autenticación:
+
+**Opciones de Autenticación:**
+
+#### 1. **Database** - Autenticación basada en Base de Datos
+
+Configura autenticación usando una tabla de usuarios en tu base de datos.
+
+**El asistente solicita:**
+- Tabla de usuarios
+- Campo de username/email
+- Campo de password (se hashea automáticamente con bcrypt)
+- Opción de manejo de sesiones concurrentes
+- Campo de session_id (si aplica)
+
+**Genera:**
+- Router de autenticación (`/auth`)
+- Endpoints de login/logout
+- Gestión de tokens JWT
+- Dependencias de seguridad
+- Middleware de autenticación
+
+**Endpoints generados:**
+```bash
+POST /auth/login      # Autenticación
+POST /auth/logout     # Cierre de sesión
+POST /auth/refresh    # Renovar token
+GET  /auth/me         # Usuario actual
+```
+
+#### 2. **Keycloak** - Autenticación con Keycloak
+
+Integra Keycloak como proveedor de identidad.
+
+**El asistente solicita:**
+- URL del servidor Keycloak
+- Realm
+- Client ID
+- Client Secret
+- Configuración de roles y permisos
+
+**Genera:**
+- Integración completa con Keycloak
+- Validación de tokens
+- Decoradores de permisos
+- Mapeo de roles
+- Row Level Security (RLS) basado en tokens
+
+**Decorador de permisos:**
+```python
+@router.get("/users")
+async def get_users(
+    token: AccessToken = Depends(requires_permissions('read', 'users'))
+):
+    # Solo usuarios con permiso 'read' en recurso 'users'
+    pass
+```
+
+**Ejemplo de uso:**
+```bash
+tai-api set-auth
+# > Selecciona: 1 (Database) o 2 (Keycloak)
+# > Sigue el asistente interactivo
+```
+
+---
+
+### `tai-api dev`
+
+Inicia el servidor de desarrollo con hot-reload.
+
+```bash
+tai-api dev [OPTIONS]
+```
+
+**Opciones:**
+- `-w, --auth`: Ejecutar con autenticación habilitada
+
+**Ejemplos:**
+```bash
+# Modo desarrollo sin autenticación
+tai-api dev
+
+# Modo desarrollo con autenticación
+tai-api dev --auth
+```
+
+**Características:**
+- Hot-reload automático al detectar cambios
+- Logs detallados en consola
+- Servidor en `http://localhost:8000`
+- Documentación en `http://localhost:8000/docs`
+
+---
+
+### `tai-api set-mcp`
+
+Configura el servidor para exponer endpoints vía Model Context Protocol (MCP).
+
+```bash
+tai-api set-mcp
+```
+
+**¿Qué hace?**
+- Instala la dependencia `fastapi-mcp`
+- Configura el endpoint `/mcp`
+- Actualiza la configuración del proyecto
+- Regenera archivos principales
+
+**Uso del endpoint MCP:**
+```bash
+GET /mcp
+```
+
+Expone los metadatos de la API en formato MCP para integración con herramientas de IA y automatización.
+
+---
+
+## 🏗️ Arquitectura del Proyecto
+
+```
+mi-proyecto/
+├── api/                          # Namespace principal
+│   ├── __init__.py
+│   ├── __main__.py               # Entry point con autenticación
+│   ├── __dev__.py                # Entry point para desarrollo
+│   │
+│   ├── database/                 # Capa de datos
+│   │   └── public/               # Schema 'public'
+│   │       ├── models/           # Modelos Pydantic
+│   │       │   ├── __init__.py
+│   │       │   └── modelo_*.py
+│   │       └── crud/             # Operaciones CRUD
+│   │           └── asyn/
+│   │               └── __init__.py
+│   │
+│   ├── routers/                  # Endpoints FastAPI
+│   │   ├── __init__.py
+│   │   └── database/
+│   │       ├── __init__.py
+│   │       └── public/           # Routers del schema
+│   │           ├── __init__.py
+│   │           ├── router_tabla1.py
+│   │           ├── router_tabla2.py
+│   │           └── router_enums.py
+│   │
+│   ├── resources/                # Recursos compartidos
+│   │   ├── __init__.py
+│   │   ├── exceptions.py         # Excepciones personalizadas
+│   │   ├── handlers.py           # Manejadores de errores
+│   │   ├── responses.py          # Modelos de respuesta
+│   │   └── mcp.py                # Configuración MCP
+│   │
+│   └── diagrams/                 # Diagramas ER generados
+│
+├── docker/                       # Recursos Docker
+│   ├── dockerfile
+│   └── entrypoint.sh
+│
+└── pyproject.toml                # Configuración Poetry
+```
+
+## 🔐 Autenticación y Seguridad
+
+### Autenticación Database
+
+Cuando se configura autenticación por base de datos:
+
+```python
+# Endpoints protegidos automáticamente
+from api.auth import get_current_user
+
+@router.get("/protected")
+async def protected_route(
+    current_user = Depends(get_current_user)
+):
+    return {"user": current_user.username}
+```
+
+### Autenticación Keycloak
+
+Con Keycloak, se aplica Row Level Security (RLS) automático:
+
+```python
+from api.auth import requires_permissions
+
+@router.get("/usuarios")
+async def get_usuarios(
+    token: AccessToken = Depends(requires_permissions('read', 'usuarios'))
+):
+    # RLS aplicado automáticamente según token
+    # Solo ve registros permitidos por sus permisos
+    pass
+```
+
+## 🎨 Personalización
+
+### Modificar Endpoints Generados
+
+Los routers generados son completamente editables. Puedes:
+
+1. Agregar validaciones personalizadas
+2. Modificar la lógica de negocio
+3. Añadir nuevos endpoints
+4. Cambiar parámetros de búsqueda
+
+```python
+# En router_usuario.py - puedes editar libremente
+@usuario_router.post("/registro")
+async def registro_personalizado(
+    data: UsuarioCreate,
+    api: PublicAsyncDBAPI = Depends(PublicAsyncDBAPI)
+):
+    # Lógica personalizada
+    # Validar email único
+    existe = await api.usuario.exists(email=data.email)
+    if existe:
+        raise ValidationException("Email ya registrado")
+    
+    # Crear usuario
+    return await api.usuario.create(data)
+```
+
+### Agregar Middleware
+
+```python
+# En __main__.py
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+### Configurar Base de Datos
+
+La configuración de base de datos se gestiona a través de `tai-sql`:
+
+```bash
+# Definir conexión
+tai-sql config set DATABASE_URL postgresql://user:pass@localhost/db
+
+# Establecer schema por defecto
+tai-sql set-default-schema public
+```
+
+## 🧪 Testing
+
+Ejemplo de test para endpoints generados:
+
+```python
+from fastapi.testclient import TestClient
+from api import app
+
+client = TestClient(app)
+
+def test_get_usuarios():
+    response = client.get("/usuario?limit=10")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert isinstance(data["data"], list)
+    assert data["meta"]["limit"] == 10
+
+def test_create_usuario():
+    response = client.post("/usuario", json={
+        "nombre": "Test User",
+        "email": "test@example.com"
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["data"]["email"] == "test@example.com"
+```
+
+## 📖 Integración con TAI-SQL
+
+TAI-API se integra profundamente con TAI-SQL:
+
+```bash
+# 1. Inicializar tai-sql
+tai-sql init
+
+# 2. Definir esquema de BD
+# Edita los archivos en schemas/
+
+# 3. Aplicar migraciones
+tai-sql migrate
+
+# 4. Introspección (opcional, para BD existente)
+tai-sql introspect --schema public
+
+# 5. Generar API
+tai-api generate --schema public
+```
+
+## 🚢 Despliegue
+
+### Con Docker
+
+```dockerfile
+# Dockerfile generado automáticamente
+FROM python:3.11-slim
+
+WORKDIR /app
+COPY . .
+
+RUN pip install poetry
+RUN poetry install --no-dev
+
+CMD ["poetry", "run", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+### Con Docker Compose
+
+```yaml
+version: '3.8'
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://user:pass@db:5432/mydb
+    depends_on:
+      - db
+  
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: mydb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+```
+
+### Producción
+
+```bash
+# Instalar dependencias de producción
+poetry install --no-dev
+
+# Ejecutar con Gunicorn + Uvicorn workers
+gunicorn api:app \
+  --workers 4 \
+  --worker-class uvicorn.workers.UvicornWorker \
+  --bind 0.0.0.0:8000 \
+  --access-logfile - \
+  --error-logfile -
+```
+
+## 🤝 Contribución
+
+Las contribuciones son bienvenidas. Por favor:
+
+1. Fork el repositorio
+2. Crea una rama para tu feature (`git checkout -b feature/amazing-feature`)
+3. Commit tus cambios (`git commit -m 'Add amazing feature'`)
+4. Push a la rama (`git push origin feature/amazing-feature`)
+5. Abre un Pull Request
+
+## 📝 Licencia
+
+Este proyecto está bajo la Licencia MIT. Ver el archivo [LICENSE](LICENSE) para más detalles.
+
+## 🔗 Enlaces
+
+- **Homepage**: [Triple Alpha Innovation](https://www.triplealpha.in/es/)
+- **Repositorio**: [GitHub - tai-api](https://github.com/triplealpha-innovation/tai-api)
+- **Issues**: [GitHub Issues](https://github.com/triplealpha-innovation/tai-api/issues)
+- **TAI-SQL**: [Repositorio tai-sql](https://github.com/triplealpha-innovation/tai-sql)
+
+## 👥 Autores
+
+- **MateoSaezMata** - [msaez@triplealpha.in](mailto:msaez@triplealpha.in)
+- **CatuxaRama** - [crama@triplealpha.in](mailto:crama@triplealpha.in)
+
+## 🙏 Agradecimientos
+
+- FastAPI por el excelente framework
+- El equipo de Triple Alpha Innovation
+- La comunidad de código abierto
+
+---
+
+**Desarrollado con ❤️ por Triple Alpha Innovation**
