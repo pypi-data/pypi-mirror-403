@@ -1,0 +1,161 @@
+Metadata-Version: 2.4
+Name: notora
+Version: 0.9.0
+Summary: Shared base logic used across AldanDev projects.
+Project-URL: Homepage, https://pypi.org/project/notora/
+Project-URL: Repository, https://github.com/AldanDev/Notora
+Project-URL: Issues, https://github.com/AldanDev/Notora/issues
+Author-email: Ivan Larin <ivan.l@aldandev.com>, Igor Pavlyukovets <igor.p@aldandev.com>, Ilia Boiarintsev <ilya.b@aldandev.com>
+License: MIT License
+        
+        Copyright (c) 2025 AldanDev
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+License-File: LICENSE
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: Topic :: Software Development :: Libraries
+Requires-Python: <4,>=3.12
+Requires-Dist: pydantic[email]<3.0.0,>=2.12.4
+Requires-Dist: sqlalchemy[asyncio]<3.0.0,>=2.0.44
+Description-Content-Type: text/markdown
+
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/notora)](https://badge.fury.io/py/notora)
+[![PyPI version](https://badge.fury.io/py/notora.svg)](https://badge.fury.io/py/notora)
+
+## notora
+
+Shared base logic used across AldanDev projects.
+
+- v1 (legacy): `notora.v1`
+- v2 (next-gen toolkit): `notora.v2`
+
+## v2 quickstart
+
+```python
+from notora.v2.repositories import Repository, RepoConfig
+from notora.v2.services import RepositoryService, ServiceConfig
+
+repo = Repository(
+    User,
+    config=RepoConfig(default_limit=50),
+)
+service = RepositoryService(
+    repo,
+    config=ServiceConfig(detail_schema=UserSchema, list_schema=UserListSchema),
+)
+```
+
+## v2 docs
+
+- `docs/v2/index.md`
+- `docs/v2/models.md`
+- `docs/v2/repositories.md`
+- `docs/v2/services.md`
+- `docs/v2/query-dsl.md`
+- `docs/v2/pagination.md`
+- `docs/v2/m2m.md`
+- `docs/v2/recipes.md`
+
+### Listing and pagination
+
+```python
+from notora.v2.repositories import QueryParams, PaginationParams
+
+rows = await service.list_raw(
+    session,
+    limit=None,  # no limit
+)
+
+params = QueryParams(filters=[...], ordering=[...], limit=None)
+rows = await service.list_raw_params(session, params)
+
+page = await service.paginate_params(
+    session,
+    PaginationParams(limit=20, offset=0, filters=[...]),
+)
+```
+
+### Repository/service factories
+
+```python
+from notora.v2.repositories import build_repository, RepoConfig
+from notora.v2.services import build_service, ServiceConfig
+
+repo = build_repository(User, config=RepoConfig(default_limit=25))
+service = build_service(User, repo=repo, service_config=ServiceConfig(detail_schema=UserSchema))
+```
+
+### Query DSL (FastAPI-friendly)
+
+```python
+from fastapi import Depends
+from notora.v2.repositories import (
+    FilterField,
+    QueryParams,
+    QueryInput,
+    SortField,
+    build_query_params,
+    make_query_params_dependency,
+)
+
+filter_fields = {
+    'name': FilterField(resolver=lambda m: m.name, value_type=str),
+    'age': FilterField(resolver=lambda m: m.age, value_type=int, operators={'eq', 'gte', 'lte'}),
+}
+sort_fields = {
+    'name': SortField(resolver=lambda m: m.name),
+    'created_at': SortField(resolver=lambda m: m.created_at),
+}
+
+def query_params(query: QueryInput = Depends()) -> QueryParams[User]:
+    return build_query_params(
+        query,
+        model=User,
+        filter_fields=filter_fields,
+        sort_fields=sort_fields,
+    )
+
+query_params_dep = make_query_params_dependency(
+    model=User,
+    filter_fields=filter_fields,
+    sort_fields=sort_fields,
+)
+
+# Example request:
+# /users?filter=name:eq:john&filter=age:gte:18&sort=-created_at&limit=20&offset=0
+```
+
+Supported operators: `eq`, `ne`, `lt`, `lte`, `gt`, `gte`, `in`, `ilike`, `isnull`.
+
+### M2M sync modes
+
+```python
+from notora.v2.services import M2MSyncMode
+
+class UserService(RepositoryService[UUID, User, UserSchema]):
+    m2m_sync_mode: M2MSyncMode = M2MSyncMode.ADD
+```
