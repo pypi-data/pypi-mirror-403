@@ -1,0 +1,57 @@
+name: Post to X
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: write  # Needed to delete old cache
+
+jobs:
+  post:
+    # Only run in the real repo, not forks
+    if: github.repository == 'Ampersand-Game-Studios/gms-mcp'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore tweet history from cache
+        uses: actions/cache/restore@v4
+        id: cache-restore
+        with:
+          path: .github/tweet_history.json
+          key: tweet-history-${{ github.run_id }}
+          restore-keys: |
+            tweet-history-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install tweepy
+
+      - name: Post to X
+        id: post
+        env:
+          X_APP_KEY: ${{ secrets.X_APP_KEY }}
+          X_APP_SECRET: ${{ secrets.X_APP_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+        run: python .github/scripts/post_tweet.py
+
+      - name: Delete old cache
+        if: always() && steps.cache-restore.outputs.cache-matched-key
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh cache delete "${{ steps.cache-restore.outputs.cache-matched-key }}" --repo ${{ github.repository }} || true
+
+      - name: Save tweet history to cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .github/tweet_history.json
+          key: tweet-history-${{ github.run_id }}
