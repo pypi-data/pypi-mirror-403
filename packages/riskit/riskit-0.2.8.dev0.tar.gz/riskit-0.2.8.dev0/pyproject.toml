@@ -1,0 +1,130 @@
+[project]
+name = "riskit"
+dynamic = ["version"]
+description = "A library providing implementations of various risk metrics for risk-aware trajectory planning."
+authors = [{ name = "Zurab Mujirishvili", email = "zurab.mujirishvili@fau.de" }]
+readme = "README.md"
+requires-python = ">=3.13"
+license-files = ["LICEN[CS]E*"]
+keywords = [
+    "risk metrics",
+    "trajectory planning",
+    "robotics",
+    "autonomous systems",
+    "safety",
+    "uncertainty quantification",
+]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "numtypes>=0.5.1",
+    "jax>=0.9.0",
+    "jaxtyping>=0.3.6",
+]
+
+[project.optional-dependencies]
+type-checking = [
+    "beartype>=0.22.9",
+]
+visualization = [
+    "plotly>=6.5.2",
+    "kaleido>=1.2.0",
+    "anyio>=4.12.1",
+    "scipy>=1.17.0",
+    "rich>=14.3.1",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+    "pyright>=1.1.408",
+    "ruff>=0.14.14",
+    "beartype>=0.22.9",
+    "hatch-vcs>=0.5.0",
+]
+doc = [
+    "typi>=0.1.1",
+]
+test = [
+    "jax>=0.9.0",
+    "jaxtyping>=0.3.6",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.0.0",
+    "pytest-subtests>=0.15.0",
+    "pytest-watcher>=0.6.3",
+]
+type-checking = [
+    "beartype>=0.22.9",
+]
+visualization = [
+    "plotly>=6.5.2",
+    "kaleido>=1.2.0",
+    "anyio>=4.12.1",
+    "scipy>=1.17.0",
+    "rich>=14.3.1",
+]
+
+[tool.uv]
+link-mode = "copy"
+default-groups = ["dev", "test", "doc", "type-checking", "visualization"]
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+local_scheme = "no-local-version"
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "riskit/",
+  "LICENSE",
+  "README.md",
+  "pyproject.toml",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["riskit"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+python_classes = ["test_*"]
+filterwarnings = [
+    "error",
+]
+markers = [   
+    "visualize: Tests that produce visualizations (run with -m visualize)",
+    "convergence: Tests that analyze convergence of risk metrics (run with -m convergence)",
+]
+addopts = "-m 'not visualize and not convergence'"
+
+[tool.pyright]
+include = ["riskit", "tests/test_metrics.py"]
+
+[tool.ruff.lint]
+extend-select = ["RUF018"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "RUF018",  # Allow Walrus operator in asserts in tests
+    "F841"     # Allow unused variables in tests
+]
+"**/accelerated.py" = [
+    "F722", # Ignore syntax error in forward references for jaxtyping types
+    "F821", # Ignore undefined names in JIT-compiled functions
+]
+
+[tool.pytest-watcher]
+now = "true"
