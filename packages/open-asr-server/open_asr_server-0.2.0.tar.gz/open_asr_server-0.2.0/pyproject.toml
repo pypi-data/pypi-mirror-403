@@ -1,0 +1,98 @@
+[project]
+name = "open-asr-server"
+version = "0.2.0"
+description = "OpenAI-compatible ASR server with pluggable local backends."
+readme = "README.md"
+authors = [
+    { name = "codyw912", email = "32690983+codyw912@users.noreply.github.com" }
+]
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+keywords = ["asr", "speech-to-text", "openai", "fastapi", "whisper"]
+dependencies = [
+    "fastapi>=0.110",
+    "huggingface-hub>=0.23",
+    "pydantic>=2.0",
+    "python-multipart>=0.0.9",
+    "typer>=0.12",
+    "uvicorn>=0.29",
+]
+
+[project.urls]
+Homepage = "https://github.com/codyw912/open-asr-server"
+Repository = "https://github.com/codyw912/open-asr-server"
+Issues = "https://github.com/codyw912/open-asr-server/issues"
+
+[project.optional-dependencies]
+parakeet = [
+    "parakeet-mlx; python_version < '3.12'",
+]
+whisper = [
+    "mlx-whisper; python_version < '3.12'",
+]
+lightning-whisper = [
+    "lightning-whisper-mlx; python_version < '3.12'",
+]
+faster-whisper = [
+    "faster-whisper",
+]
+whisper-cpp = [
+    "pywhispercpp",
+]
+kyutai-mlx = [
+    "moshi-mlx; python_version >= '3.12' and python_version < '3.13'",
+]
+nemo = [
+    "nemo_toolkit[asr]",
+    "torch",
+    "torchaudio",
+    "torchvision",
+]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "httpx>=0.25",
+]
+
+[project.scripts]
+open-asr-server = "open_asr_server.cli:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu121", extra = "nemo", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { index = "pytorch-cpu", extra = "nemo", marker = "sys_platform == 'darwin'" },
+]
+torchaudio = [
+    { index = "pytorch-cu121", extra = "nemo", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { index = "pytorch-cpu", extra = "nemo", marker = "sys_platform == 'darwin'" },
+]
+torchvision = [
+    { index = "pytorch-cu121", extra = "nemo", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { index = "pytorch-cpu", extra = "nemo", marker = "sys_platform == 'darwin'" },
+]
+
+[build-system]
+requires = ["uv_build>=0.9.24,<0.10.0"]
+build-backend = "uv_build"
