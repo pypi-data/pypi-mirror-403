@@ -1,0 +1,363 @@
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+
+from typing import Iterable
+from typing import Sequence
+
+import numpy as np
+from pioreactor import structs
+
+
+def _to_pyfloat(seq: list[float]) -> list[float]:
+    # we have trouble serializing numpy floats
+    return [float(_) for _ in seq]
+
+
+def spline_fit(
+    x: Sequence[float],
+    y: Sequence[float],
+    knots: int | Sequence[float] | str | None = "auto",
+    weights: Sequence[float] | None = None,
+) -> structs.SplineFitData:
+    """
+    Fit a natural cubic regression spline.
+
+    Parameters
+    ----------
+    x, y
+        Observations.
+    knots
+        Either the number of knots to use (including boundaries), explicit knot positions, or "auto".
+        When "auto" (default), knot count is selected by AICc over a small candidate range.
+    weights
+        Optional weights for each observation.
+
+    Returns
+    -------
+    structs.SplineFitData
+        A struct representation containing knots and per-interval coefficients.
+    """
+    x_values = np.asarray(x, dtype=float)
+    y_values = np.asarray(y, dtype=float)
+
+    if x_values.size != y_values.size:
+        raise ValueError("x and y must have the same length.")
+    if x_values.size < 2:
+        raise ValueError("At least two data points are required.")
+
+    if np.allclose(x_values, x_values[0]):
+        raise ValueError("x values must not all be the same.")
+
+    if weights is None:
+        weight_values = np.ones_like(x_values)
+    else:
+        weight_values = np.asarray(weights, dtype=float)
+        if weight_values.size != x_values.size:
+            raise ValueError("weights must match the length of x and y.")
+        if np.any(weight_values < 0):
+            raise ValueError("weights must be non-negative.")
+
+    if knots is None or knots == "auto":
+        knot_positions = _auto_select_knots(x_values, y_values, weight_values)
+    elif isinstance(knots, str):
+        raise ValueError('knots must be an int, a sequence of floats, or "auto".')
+    else:
+        knot_positions = _normalize_knots(x_values, knots)
+    if len(knot_positions) < 2:
+        raise ValueError("At least two knots are required.")
+
+    knot_values, _ = _fit_knot_values(knot_positions, x_values, y_values, weight_values)
+    coefficients = _natural_cubic_spline_coefficients(knot_positions, knot_values)
+
+    return structs.SplineFitData(
+        knots=_to_pyfloat(knot_positions.tolist()),
+        coefficients=[_to_pyfloat(coeff.tolist()) for coeff in coefficients],
+    )
+
+
+def spline_fit_interpolating(x: Sequence[float], y: Sequence[float]) -> structs.SplineFitData:
+    """
+    Fit a natural cubic spline that interpolates every data point.
+
+    Parameters
+    ----------
+    x, y
+        Observations. x values must be strictly increasing after sorting.
+    """
+    x_values = np.asarray(x, dtype=float)
+    y_values = np.asarray(y, dtype=float)
+
+    if x_values.size != y_values.size:
+        raise ValueError("x and y must have the same length.")
+    if x_values.size < 2:
+        raise ValueError("At least two data points are required.")
+
+    order = np.argsort(x_values)
+    x_sorted = x_values[order]
+    y_sorted = y_values[order]
+
+    if np.any(np.diff(x_sorted) <= 0):
+        raise ValueError("x values must be strictly increasing for interpolation.")
+
+    coefficients = _natural_cubic_spline_coefficients(x_sorted, y_sorted)
+
+    return structs.SplineFitData(
+        knots=_to_pyfloat(x_sorted.tolist()),
+        coefficients=[_to_pyfloat(coeff.tolist()) for coeff in coefficients],
+    )
+
+
+def spline_eval(spline_data: structs.SplineFitData, x: float) -> float:
+    """Evaluate a spline produced by spline_fit at a point."""
+    knots, coefficients = _parse_spline_data(spline_data)
+    index = _interval_index(knots, x)
+    u = x - knots[index]
+    a, b, c, d = coefficients[index]
+    return float(a + b * u + c * u**2 + d * u**3)
+
+
+def spline_eval_derivative(spline_data: structs.SplineFitData, x: float) -> float:
+    """Evaluate the first derivative of a spline at a point."""
+    knots, coefficients = _parse_spline_data(spline_data)
+    index = _interval_index(knots, x)
+    u = x - knots[index]
+    _, b, c, d = coefficients[index]
+    return float(b + 2.0 * c * u + 3.0 * d * u**2)
+
+
+def spline_solve(spline_data: structs.SplineFitData, y: float) -> list[float]:
+    """Solve spline(x) == y for all real solutions."""
+    knots, coefficients = _parse_spline_data(spline_data)
+    solutions: list[float] = []
+    last_index = len(coefficients) - 1
+
+    for index, (a, b, c, d) in enumerate(coefficients):
+        h = knots[index + 1] - knots[index]
+        if h <= 0:
+            raise ValueError("Knots must be strictly increasing.")
+
+        if last_index == 0:
+            lower, upper = -np.inf, np.inf
+        elif index == 0:
+            lower, upper = -np.inf, h
+        elif index == last_index:
+            lower, upper = 0.0, np.inf
+        else:
+            lower, upper = 0.0, h
+
+        roots = _real_roots_in_interval([d, c, b, a - y], lower, upper)
+        for root in roots:
+            solutions.append(knots[index] + root)
+
+    return _to_pyfloat(_unique_sorted(solutions))
+
+
+def _interval_index(knots: np.ndarray, x: float) -> int:
+    idx = int(np.searchsorted(knots, x, side="right") - 1)
+    if idx < 0:
+        return 0
+    if idx >= len(knots) - 1:
+        return len(knots) - 2
+    return idx
+
+
+def _normalize_knots(x_values: np.ndarray, knots: int | Sequence[float]) -> np.ndarray:
+    x_min = float(np.min(x_values))
+    x_max = float(np.max(x_values))
+
+    if isinstance(knots, int):
+        if knots < 2:
+            raise ValueError("knots must be >= 2.")
+        quantiles = np.linspace(0.0, 1.0, knots)
+        knot_positions = np.quantile(x_values, quantiles)
+    else:
+        knot_positions = np.array(list(knots), dtype=float)
+        if knot_positions.size == 0:
+            raise ValueError("knots must not be empty.")
+        if knot_positions.min() > x_min:
+            knot_positions = np.append(knot_positions, x_min)
+        if knot_positions.max() < x_max:
+            knot_positions = np.append(knot_positions, x_max)
+
+    knot_positions = np.unique(np.sort(knot_positions))
+    if knot_positions.size < 2:
+        raise ValueError("knots must contain at least two unique values.")
+    return knot_positions
+
+
+def _fit_knot_values(
+    knot_positions: np.ndarray,
+    x_values: np.ndarray,
+    y_values: np.ndarray,
+    weight_values: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    design_matrix = _build_spline_design_matrix(knot_positions, x_values)
+    sqrt_weights = np.sqrt(weight_values)
+    weighted_design = design_matrix * sqrt_weights[:, None]
+    weighted_y = y_values * sqrt_weights
+    knot_values, *_ = np.linalg.lstsq(weighted_design, weighted_y, rcond=None)
+    return knot_values, design_matrix
+
+
+def _aicc_score(weighted_sse: float, n_obs: int, n_params: int) -> float:
+    if n_obs <= n_params + 1:
+        return float("inf")
+    sse = max(weighted_sse, np.finfo(float).tiny)
+    correction = (2 * n_params * (n_params + 1)) / (n_obs - n_params - 1)
+    return n_obs * np.log(sse / n_obs) + 2 * n_params + correction
+
+
+def _auto_select_knots(
+    x_values: np.ndarray,
+    y_values: np.ndarray,
+    weight_values: np.ndarray,
+    *,
+    max_knots: int | None = None,
+) -> np.ndarray:
+    n_obs = x_values.size
+    unique_x = np.unique(x_values).size
+    if max_knots is None:
+        max_knots = min(6, n_obs)
+    max_knots = min(max_knots, unique_x)
+    max_knots = max(2, max_knots)
+
+    best_score = float("inf")
+    best_knots: np.ndarray | None = None
+
+    for count in range(2, max_knots + 1):
+        knot_positions = _normalize_knots(x_values, count)
+        knot_values, design_matrix = _fit_knot_values(knot_positions, x_values, y_values, weight_values)
+        y_pred = design_matrix @ knot_values
+        residual = y_values - y_pred
+        weighted_sse = float(np.sum(weight_values * residual**2))
+        score = _aicc_score(weighted_sse, n_obs, knot_positions.size)
+        if score < best_score:
+            best_score = score
+            best_knots = knot_positions
+
+    if best_knots is None:
+        return _normalize_knots(x_values, 2)
+    return best_knots
+
+
+def _build_spline_design_matrix(knots: np.ndarray, x_values: np.ndarray) -> np.ndarray:
+    n = x_values.size
+    m = knots.size
+    design = np.zeros((n, m), dtype=float)
+    for idx in range(m):
+        knot_values = np.zeros(m, dtype=float)
+        knot_values[idx] = 1.0
+        coeffs = _natural_cubic_spline_coefficients(knots, knot_values)
+        design[:, idx] = _evaluate_coefficients(knots, coeffs, x_values)
+    return design
+
+
+def _evaluate_coefficients(knots: np.ndarray, coefficients: np.ndarray, x_values: np.ndarray) -> np.ndarray:
+    results = np.empty_like(x_values, dtype=float)
+    for i, x in enumerate(x_values):
+        index = _interval_index(knots, float(x))
+        u = x - knots[index]
+        a, b, c, d = coefficients[index]
+        results[i] = a + b * u + c * u**2 + d * u**3
+    return results
+
+
+def _natural_cubic_spline_coefficients(knots: np.ndarray, values: np.ndarray) -> np.ndarray:
+    n = knots.size
+    if values.size != n:
+        raise ValueError("values must match knot count.")
+
+    h = np.diff(knots)
+    if np.any(h <= 0):
+        raise ValueError("Knots must be strictly increasing.")
+
+    if n == 2:
+        m = np.array([0.0, 0.0])
+    else:
+        matrix = np.zeros((n - 2, n - 2), dtype=float)
+        rhs = np.zeros(n - 2, dtype=float)
+
+        for i in range(1, n - 1):
+            h_prev = h[i - 1]
+            h_next = h[i]
+            row = i - 1
+            if row - 1 >= 0:
+                matrix[row, row - 1] = h_prev
+            matrix[row, row] = 2.0 * (h_prev + h_next)
+            if row + 1 <= n - 3:
+                matrix[row, row + 1] = h_next
+            rhs[row] = 6.0 * ((values[i + 1] - values[i]) / h_next - (values[i] - values[i - 1]) / h_prev)
+
+        inner_m = np.linalg.solve(matrix, rhs)
+        m = np.zeros(n, dtype=float)
+        m[1:-1] = inner_m
+
+    coefficients = np.zeros((n - 1, 4), dtype=float)
+    for i in range(n - 1):
+        h_i = h[i]
+        a = values[i]
+        b = (values[i + 1] - values[i]) / h_i - h_i * (2.0 * m[i] + m[i + 1]) / 6.0
+        c = m[i] / 2.0
+        d = (m[i + 1] - m[i]) / (6.0 * h_i)
+        coefficients[i] = [a, b, c, d]
+
+    return coefficients
+
+
+def _parse_spline_data(spline_data: structs.SplineFitData) -> tuple[np.ndarray, np.ndarray]:
+    if not isinstance(spline_data, structs.SplineFitData):
+        raise ValueError("spline_data must be a SplineFitData struct.")
+
+    knots = np.asarray(spline_data.knots, dtype=float)
+    coefficients = np.asarray(spline_data.coefficients, dtype=float)
+
+    if knots.ndim != 1 or coefficients.ndim != 2 or coefficients.shape[1] != 4:
+        raise ValueError("Invalid spline_data format.")
+    if knots.size != coefficients.shape[0] + 1:
+        raise ValueError("Coefficient count must be len(knots) - 1.")
+    if np.any(np.diff(knots) <= 0):
+        raise ValueError("Knots must be strictly increasing.")
+
+    return knots, coefficients
+
+
+def _real_roots_in_interval(coefficients: Iterable[float], start: float, end: float) -> list[float]:
+    coeff_array = np.array(list(coefficients), dtype=float)
+    coeff_array = _trim_leading_zeros(coeff_array)
+    if coeff_array.size == 0:
+        if np.isfinite(start) and np.isfinite(end):
+            return [start, end]
+        return []
+
+    roots = np.roots(coeff_array)
+    real_roots = []
+    for root in roots:
+        if abs(root.imag) > 1e-9:
+            continue
+        value = float(root.real)
+        lower_ok = value >= start - 1e-9 if np.isfinite(start) else True
+        upper_ok = value <= end + 1e-9 if np.isfinite(end) else True
+        if lower_ok and upper_ok:
+            real_roots.append(min(max(value, start), end))
+
+    return real_roots
+
+
+def _trim_leading_zeros(values: np.ndarray) -> np.ndarray:
+    if values.size == 0:
+        return values
+    idx = 0
+    while idx < values.size and abs(values[idx]) < 1e-12:
+        idx += 1
+    return values[idx:]
+
+
+def _unique_sorted(values: Sequence[float]) -> list[float]:
+    if not values:
+        return []
+    sorted_values = sorted(values)
+    unique_values = [sorted_values[0]]
+    for value in sorted_values[1:]:
+        if abs(value - unique_values[-1]) > 1e-7:
+            unique_values.append(value)
+    return unique_values
