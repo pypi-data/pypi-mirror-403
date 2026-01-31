@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Great Dictator</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #record { background: #4CAF50; color: white; border: none; }
+        #stop { background: #f44336; color: white; border: none; }
+        #stop:disabled { background: #ccc; }
+        select {
+            padding: 8px;
+            font-size: 14px;
+            margin-bottom: 10px;
+            width: 100%;
+        }
+        textarea {
+            width: 100%;
+            height: 200px;
+            margin-top: 20px;
+            padding: 10px;
+            font-size: 16px;
+        }
+        #status { margin-top: 10px; color: #666; }
+        label { font-weight: bold; }
+        .menu-bar {
+            background: #f0f0f0;
+            border-bottom: 1px solid #ccc;
+            margin: -20px -20px 20px -20px;
+            padding: 0;
+        }
+        .menu-item {
+            position: relative;
+            display: inline-block;
+        }
+        .menu-item > button {
+            background: none;
+            border: none;
+            padding: 8px 16px;
+            margin: 0;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .menu-item > button:hover {
+            background: #e0e0e0;
+        }
+        .dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: white;
+            border: 1px solid #ccc;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+            min-width: 150px;
+            z-index: 100;
+        }
+        .dropdown.open { display: block; }
+        .dropdown button {
+            display: block;
+            width: 100%;
+            text-align: left;
+            background: none;
+            border: none;
+            padding: 8px 16px;
+            margin: 0;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .dropdown button:hover {
+            background: #e8e8e8;
+        }
+    </style>
+</head>
+<body>
+    <div class="menu-bar">
+        <div class="menu-item">
+            <button id="fileMenuBtn">File</button>
+            <div class="dropdown" id="fileDropdown">
+                <button id="clear">Clear</button>
+                <button id="copy">Copy</button>
+                <button id="save">Save</button>
+                <button id="saveAs">Save As</button>
+            </div>
+        </div>
+    </div>
+    <h1>Great Dictator</h1>
+
+    <div>
+        <label for="micSelect">Microphone:</label>
+        <select id="micSelect">
+            <option value="">Loading devices...</option>
+        </select>
+    </div>
+
+    <div>
+        <button id="record">Record</button>
+        <button id="stop" disabled>Stop</button>
+    </div>
+    <div id="status"></div>
+    <textarea id="transcription" placeholder="Transcription will appear here..."></textarea>
+
+    <script>
+        let mediaRecorder;
+        let currentStream;
+        let audioChunks = [];
+        let lastTranscribedLength = 0;
+        const CHUNK_INTERVAL = 3000; // Transcribe every 3 seconds
+
+        const recordBtn = document.getElementById('record');
+        const stopBtn = document.getElementById('stop');
+        const statusEl = document.getElementById('status');
+        const transcriptionEl = document.getElementById('transcription');
+        const micSelect = document.getElementById('micSelect');
+        const clearBtn = document.getElementById('clear');
+        const copyBtn = document.getElementById('copy');
+        const saveBtn = document.getElementById('save');
+        const saveAsBtn = document.getElementById('saveAs');
+        const fileMenuBtn = document.getElementById('fileMenuBtn');
+        const fileDropdown = document.getElementById('fileDropdown');
+
+        // File menu handling
+        fileMenuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fileDropdown.classList.toggle('open');
+        });
+
+        document.addEventListener('click', () => {
+            fileDropdown.classList.remove('open');
+        });
+
+        async function loadAudioDevices() {
+            try {
+                await navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(stream => stream.getTracks().forEach(track => track.stop()));
+
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const audioInputs = devices.filter(d => d.kind === 'audioinput');
+
+                micSelect.innerHTML = '';
+                audioInputs.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.textContent = device.label || `Microphone ${index + 1}`;
+                    micSelect.appendChild(option);
+                });
+
+                if (audioInputs.length === 0) {
+                    micSelect.innerHTML = '<option value="">No microphones found</option>';
+                }
+            } catch (error) {
+                micSelect.innerHTML = '<option value="">Error loading devices</option>';
+                statusEl.textContent = 'Error: ' + error.message;
+            }
+        }
+
+        loadAudioDevices();
+
+        async function transcribeAccumulated() {
+            // Create blob from all chunks so far
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'recording.webm');
+
+            try {
+                const response = await fetch('/transcribe', {
+                    method: 'POST',
+                    body: formData
+                });
+                const text = await response.text();
+                if (text.trim()) {
+                    // Replace transcription with new full text
+                    transcriptionEl.value = text;
+                }
+            } catch (error) {
+                console.error('Transcription error:', error);
+            }
+        }
+
+        recordBtn.addEventListener('click', async () => {
+            const deviceId = micSelect.value;
+            if (!deviceId) {
+                statusEl.textContent = 'Please select a microphone';
+                return;
+            }
+
+            try {
+                audioChunks = [];  // Reset chunks
+                currentStream = await navigator.mediaDevices.getUserMedia({
+                    audio: { deviceId: { exact: deviceId } }
+                });
+                mediaRecorder = new MediaRecorder(currentStream, { mimeType: 'audio/webm;codecs=opus' });
+
+                mediaRecorder.ondataavailable = async (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                        // Transcribe accumulated audio
+                        transcribeAccumulated();
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    currentStream.getTracks().forEach(track => track.stop());
+                    // Final transcription
+                    if (audioChunks.length > 0) {
+                        transcribeAccumulated();
+                    }
+                };
+
+                // Start recording with timeslice - fires ondataavailable every CHUNK_INTERVAL ms
+                mediaRecorder.start(CHUNK_INTERVAL);
+                recordBtn.disabled = true;
+                stopBtn.disabled = false;
+                statusEl.textContent = 'Recording... (transcribing every 3s)';
+            } catch (error) {
+                statusEl.textContent = 'Error: ' + error.message;
+            }
+        });
+
+        stopBtn.addEventListener('click', () => {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                recordBtn.disabled = false;
+                stopBtn.disabled = true;
+                statusEl.textContent = 'Done';
+            }
+        });
+
+        function downloadFile(content, filename) {
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        clearBtn.addEventListener('click', () => {
+            transcriptionEl.value = '';
+            statusEl.textContent = 'Cleared';
+            fileDropdown.classList.remove('open');
+        });
+
+        copyBtn.addEventListener('click', async () => {
+            await navigator.clipboard.writeText(transcriptionEl.value);
+            statusEl.textContent = 'Copied to clipboard';
+            fileDropdown.classList.remove('open');
+        });
+
+        saveBtn.addEventListener('click', () => {
+            downloadFile(transcriptionEl.value, 'transcription.txt');
+            statusEl.textContent = 'Saved as transcription.txt';
+            fileDropdown.classList.remove('open');
+        });
+
+        saveAsBtn.addEventListener('click', () => {
+            fileDropdown.classList.remove('open');
+            const filename = prompt('Enter filename:', 'transcription.txt');
+            if (filename) {
+                downloadFile(transcriptionEl.value, filename);
+                statusEl.textContent = `Saved as ${filename}`;
+            }
+        });
+    </script>
+</body>
+</html>
