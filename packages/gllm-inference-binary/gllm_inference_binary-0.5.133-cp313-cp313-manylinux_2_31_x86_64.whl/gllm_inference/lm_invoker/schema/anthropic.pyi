@@ -1,0 +1,63 @@
+class Key:
+    """Defines valid keys in Anthropic."""
+    BETAS: str
+    BUDGET_TOKENS: str
+    CONTENT: str
+    DATA: str
+    DESCRIPTION: str
+    ID: str
+    INPUT: str
+    INPUT_SCHEMA: str
+    MAX_RETRIES: str
+    MEDIA_TYPE: str
+    MAX_TOKENS: str
+    NAME: str
+    PARAMETERS: str
+    ROLE: str
+    SIGNATURE: str
+    SOURCE: str
+    STATUS: str
+    STOP_REASON: str
+    SYSTEM: str
+    TIMEOUT: str
+    THINKING: str
+    TOOLS: str
+    TOOL_CHOICE: str
+    TOOL_USE_ID: str
+    TEXT: str
+    TYPE: str
+
+class InputType:
+    """Defines valid input types in Anthropic."""
+    BASE64: str
+    CODE_EXECUTION: str
+    CODE_EXECUTION_BETA_HEADER: str
+    CODE_EXECUTION_TOOL_TYPE: str
+    ENABLED: str
+    REDACTED_THINKING: str
+    TEXT: str
+    THINKING: str
+    TOOL: str
+    TOOL_RESULT: str
+    TOOL_USE: str
+
+class OutputType:
+    """Defines valid output types in Anthropic."""
+    BASH_CODE_EXECUTION_TOOL_RESULT: str
+    CANCELING: str
+    CONTENT_BLOCK_DELTA: str
+    CONTENT_BLOCK_START: str
+    CONTENT_BLOCK_STOP: str
+    ENDED: str
+    ERRORED: str
+    IN_PROGRESS: str
+    INPUT_JSON_DELTA: str
+    MESSAGE_STOP: str
+    REDACTED_THINKING: str
+    SERVER_TOOL_USE: str
+    SUCCEEDED: str
+    TEXT: str
+    TEXT_DELTA: str
+    THINKING: str
+    THINKING_DELTA: str
+    TOOL_USE: str
