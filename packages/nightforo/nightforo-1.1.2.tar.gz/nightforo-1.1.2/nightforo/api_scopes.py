@@ -1,0 +1,26 @@
+from enum import Enum
+
+
+class APIScopeIdsEnum(Enum):
+    ALERT_READ = "alert:read"
+    ALERT_WRITE = "alert:write"
+    ATTACHMENT_DELETE = "attachment:delete"
+    ATTACHMENT_READ = "attachment:read"
+    ATTACHMENT_WRITE = "attachment:write"
+    AUTH = "auth"
+    AUTH_LOGIN_TOKEN = "auth:login_token"
+    CONVERSATION_READ = "conversation:read"
+    CONVERSATION_WRITE = "conversation:write"
+    NODE_DELETE = "node:delete"
+    NODE_WRITE = "node:write"
+    NODE_READ = "node:read"
+    PROFILE_POST_DELETE_HARD = "profile_post:delete_hard"
+    PROFILE_POST_READ = "profile_post:read"
+    PROFILE_POST_WRITE = "profile_post:write"
+    THREAD_DELETE_HARD = "thread:delete_hard"
+    THREAD_READ = "thread:read"
+    THREAD_WRITE = "thread:write"
+    USER_DELETE = "user:delete"
+    USER_WRITE = "user:write"
+    USER_READ = "user:read"
+    USER_PROMOTE = "user:promote"
