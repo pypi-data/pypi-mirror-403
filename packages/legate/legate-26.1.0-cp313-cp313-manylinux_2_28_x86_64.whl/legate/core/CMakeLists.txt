@@ -1,0 +1,9 @@
+#=============================================================================
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#=============================================================================
+
+list(APPEND CMAKE_MESSAGE_CONTEXT "core")
+
+add_subdirectory(_lib)
+add_subdirectory(_ext)
