@@ -1,0 +1,511 @@
+# type: ignore[arg-type, call-arg]
+"""Demo catalog utilities for DerivaML testing and examples.
+
+This module creates demo catalogs with sample data for testing. It uses
+dynamically created Pydantic models for features, which cannot be statically
+typed - hence the type ignore above.
+"""
+from __future__ import annotations
+
+import atexit
+import itertools
+import logging
+import string
+import subprocess
+from collections.abc import Iterator, Sequence
+from datetime import datetime
+from numbers import Integral
+from pathlib import Path
+from random import choice, randint, random
+from tempfile import TemporaryDirectory
+
+from deriva.core import BaseCLI, ErmrestCatalog
+from deriva.core.ermrest_model import Schema, Table
+from deriva.core.typed import BuiltinType, ColumnDef, SchemaDef, TableDef
+from pydantic import BaseModel, ConfigDict
+from requests.exceptions import HTTPError
+
+from deriva_ml import DerivaML, DerivaMLException, MLVocab
+from deriva_ml.core.definitions import RID, BuiltinTypes, ColumnDefinition
+from deriva_ml.dataset import Dataset
+from deriva_ml.dataset.aux_classes import DatasetVersion
+from deriva_ml.execution.execution import Execution, ExecutionConfiguration
+from deriva_ml.schema import (
+    create_ml_catalog,
+)
+
+try:
+    from pprint import pformat
+
+    from icecream import ic
+
+    ic.configureOutput(
+        includeContext=True,
+        argToStringFunction=lambda x: pformat(x.model_dump() if hasattr(x, "model_dump") else x, width=80, depth=10),
+    )
+except ImportError:  # Graceful fallback if IceCream isn't installed.
+    ic = lambda *a: None if not a else (a[0] if len(a) == 1 else a)  # noqa
+
+
+TEST_DATASET_SIZE = 12
+
+
+def populate_demo_catalog(execution: Execution) -> None:
+    # Delete any vocabularies and features.
+    ml_instance = execution._ml_object
+    domain_schema = ml_instance.domain_path()
+    subject = domain_schema.tables["Subject"]
+    ss = subject.insert([{"Name": f"Thing{t + 1}"} for t in range(TEST_DATASET_SIZE)])
+    for s in ss:
+        image_file = execution.asset_file_path(
+            "Image",
+            f"test_{s['RID']}.txt",
+            Subject=s["RID"],
+            Acquisition_Time=datetime.now(),
+            Acquisition_Date=datetime.now().date(),
+        )
+        with image_file.open("w") as f:
+            f.write(f"Hello there {random()}\n")
+
+    execution.upload_execution_outputs()
+
+
+class DatasetDescription(BaseModel):
+    types: list[str]  # Types of the dataset.
+    description: str  # Description.
+    members: dict[
+        str, int | list[DatasetDescription]
+    ]  # Either a list of nested dataset, or then number of elements to add
+    member_rids: dict[str, list[RID]] = {}  # The rids of the members of the dataset.
+    version: DatasetVersion = DatasetVersion(1, 0, 0)  # The initial version.
+    dataset: Dataset = None  # RID of dataset that was created.
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+def create_datasets(
+    client: Execution,
+    spec: DatasetDescription,
+    member_rids: dict[str, Iterator[RID]],
+) -> DatasetDescription:
+    """
+    Create a dataset per `spec`, then add child members (either by slicing
+    off pre-generated RIDs or by recursing on nested specs).
+    """
+    # Create unpinned dataset.
+    dataset = client.create_dataset(
+        dataset_types=spec.types,
+        description=spec.description,
+        version=spec.version,
+    )
+
+    result_spec = DatasetDescription(
+        description=spec.description,
+        members={},
+        types=spec.types,
+        dataset=dataset,
+        version=spec.version,
+    )
+
+    dataset_rids = {}
+    for member_type, value in spec.members.items():
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            nested_specs: list[DatasetDescription] = list(value)
+            rids: list[RID] = []
+            for child_spec in nested_specs:
+                child_ds = create_datasets(client, child_spec, member_rids)
+                result_spec.members.setdefault(member_type, []).append(child_ds)
+                rids.append(child_ds.dataset.dataset_rid)
+        elif isinstance(value, Integral):
+            count = int(value)
+            # take exactly `count` RIDs (or an empty list if count <= 0)
+            rids = list(itertools.islice(member_rids[member_type], count))
+            assert len(rids) == count, f"Expected {count} RIDs, got {len(rids)}"
+            result_spec.members[member_type] = count
+        else:
+            raise TypeError(
+                f"Expected spec.members['{member_type}'] to be either an int or a list, got {type(value).__name__!r}"
+            )
+
+        # attach and record
+        if rids:
+            dataset_rids[member_type] = rids
+            result_spec.member_rids.setdefault(member_type, []).extend(rids)
+    dataset.add_dataset_members(dataset_rids, description="Added by create_datasets")
+
+    return result_spec
+
+
+def dataset_spec() -> DatasetDescription:
+    dataset = DatasetDescription(
+        description="A dataset",
+        members={"Subject": 2},
+        types=[],
+    )
+
+    training_dataset = DatasetDescription(
+        description="A dataset that is nested",
+        members={"Dataset": [dataset, dataset], "Image": 2},
+        types=["Training"],
+    )
+
+    testing_dataset = DatasetDescription(
+        description="A dataset that is nested",
+        members={"Dataset": [dataset, dataset], "Image": 2},
+        types=["Testing"],
+    )
+
+    double_nested_dataset = DatasetDescription(
+        description="A dataset that is double nested",
+        members={"Dataset": [training_dataset, testing_dataset]},
+        types=["Complete"],
+    )
+    return double_nested_dataset
+
+
+def create_demo_datasets(execution: Execution) -> DatasetDescription:
+    """Create datasets from a populated catalog."""
+    ml_instance = execution._ml_object
+    ml_instance.add_dataset_element_type("Subject")
+    ml_instance.add_dataset_element_type("Image")
+
+    _type_rid = ml_instance.add_term(
+        "Dataset_Type", "Complete", synonyms=["Whole", "complete", "whole"], description="A test"
+    )
+    _training_rid = ml_instance.add_term(
+        "Dataset_Type", "Training", synonyms=["Train", "train", "training"], description="A training set"
+    )
+    _testing_rid = ml_instance.add_term(
+        "Dataset_Type", "Testing", synonyms=["Test", "test", "testing"], description="A testing set"
+    )
+
+    table_path = ml_instance.domain_path().tables["Subject"]
+    subject_rids = [i["RID"] for i in table_path.entities().fetch()]
+
+    table_path = ml_instance.domain_path().tables["Image"]
+    image_rids = [i["RID"] for i in table_path.entities().fetch()]
+
+    spec = dataset_spec()
+    dataset = create_datasets(execution, spec, {"Subject": iter(subject_rids), "Image": iter(image_rids)})
+    return dataset
+
+
+def create_demo_features(execution: Execution) -> None:
+    ml_instance = execution._ml_object
+    # Use update_navbar=False for batch creation, then call apply_catalog_annotations() once at the end
+    ml_instance.create_vocabulary("SubjectHealth", "A vocab", update_navbar=False)
+    ml_instance.add_term(
+        "SubjectHealth",
+        "Sick",
+        description="The subject self reports that they are sick",
+    )
+    ml_instance.add_term(
+        "SubjectHealth",
+        "Well",
+        description="The subject self reports that they feel well",
+    )
+    ml_instance.create_vocabulary("ImageQuality", "Controlled vocabulary for image quality", update_navbar=False)
+    ml_instance.add_term("ImageQuality", "Good", description="The image is good")
+    ml_instance.add_term("ImageQuality", "Bad", description="The image is bad")
+    box_asset = ml_instance.create_asset(
+        "BoundingBox", comment="A file that contains a cropped version of a image", update_navbar=False
+    )
+
+    ml_instance.create_feature(
+        "Subject",
+        "Health",
+        terms=["SubjectHealth"],
+        metadata=[ColumnDefinition(name="Scale", type=BuiltinTypes.int2, nullok=True)],
+        optional=["Scale"],
+        update_navbar=False,
+    )
+    ml_instance.create_feature("Image", "BoundingBox", assets=[box_asset], update_navbar=False)
+    ml_instance.create_feature("Image", "Quality", terms=["ImageQuality"], update_navbar=False)
+
+    # Update navbar once after all tables are created
+    ml_instance.apply_catalog_annotations()
+
+    ImageQualityFeature = ml_instance.feature_record_class("Image", "Quality")
+    ImageBoundingboxFeature = ml_instance.feature_record_class("Image", "BoundingBox")
+    SubjectWellnessFeature = ml_instance.feature_record_class("Subject", "Health")
+
+    # Get the workflow for this notebook
+
+    subject_rids = [i["RID"] for i in ml_instance.domain_path().tables["Subject"].entities().fetch()]
+    image_rids = [i["RID"] for i in ml_instance.domain_path().tables["Image"].entities().fetch()]
+    _subject_feature_list = [
+        SubjectWellnessFeature(
+            Subject=subject_rid,
+            Execution=execution.execution_rid,
+            SubjectHealth=choice(["Well", "Sick"]),
+            Scale=randint(1, 10),
+        )
+        for subject_rid in subject_rids
+    ]
+
+    # Create a new set of images.  For fun, lets wrap this in an execution so we get status updates
+    bounding_box_files = []
+    for i in range(10):
+        bounding_box_file = execution.asset_file_path("BoundingBox", f"box{i}.txt")
+        with bounding_box_file.open("w") as fp:
+            fp.write(f"Hi there {i}")
+        bounding_box_files.append(bounding_box_file)
+
+    image_bounding_box_feature_list = [
+        ImageBoundingboxFeature(
+            Image=image_rid,
+            BoundingBox=asset_name,
+        )
+        for image_rid, asset_name in zip(image_rids, itertools.cycle(bounding_box_files))
+    ]
+
+    image_quality_feature_list = [
+        ImageQualityFeature(
+            Image=image_rid,
+            ImageQuality=choice(["Good", "Bad"]),
+        )
+        for image_rid in image_rids
+    ]
+
+    subject_feature_list = [
+        SubjectWellnessFeature(
+            Subject=subject_rid,
+            SubjectHealth=choice(["Well", "Sick"]),
+            Scale=randint(1, 10),
+        )
+        for subject_rid in subject_rids
+    ]
+
+    execution.add_features(image_bounding_box_feature_list)
+    execution.add_features(image_quality_feature_list)
+    execution.add_features(subject_feature_list)
+
+
+def create_demo_files(ml_instance: DerivaML):
+    """Create demo files for testing purposes.
+
+    Args:
+        ml_instance: The DerivaML instance to create files for.
+
+    Returns:
+        None. Creates files in the working directory.
+    """
+
+    def random_string(length: int) -> str:
+        """Generate a random string of specified length.
+
+        Args:
+            length: The length of the string to generate.
+
+        Returns:
+            A random string of the specified length.
+        """
+        return "".join(random.choice(string.ascii_letters) for _ in range(length))
+
+    test_dir = ml_instance.working_dir / "test_dir"
+    test_dir.mkdir(parents=True, exist_ok=True)
+    d1 = test_dir / "d1"
+    d1.mkdir(parents=True, exist_ok=True)
+    d2 = test_dir / "d2"
+    d2.mkdir(parents=True, exist_ok=True)
+
+    # Create some demo files
+    for d in [test_dir, d1, d2]:
+        for i in range(5):
+            fname = Path(d) / f"file{i}.{random.choice(['txt', 'jpeg'])}"
+            with fname.open("w") as f:
+                f.write(random_string(10))
+    ml_instance.add_term(MLVocab.workflow_type, "File Test Workflow", description="Test workflow")
+
+
+def create_domain_schema(catalog: ErmrestCatalog, sname: str) -> None:
+    """
+    Create a domain schema.  Assumes that the ml-schema has already been created.
+    :param sname:
+    :return:
+    """
+    model = catalog.getCatalogModel()
+    _ = model.schemas["deriva-ml"]
+
+    try:
+        model.schemas[sname].drop(cascade=True)
+    except KeyError:
+        pass
+    except HTTPError as e:
+        print(e)
+        if f"Schema {sname} does not exist" in str(e):
+            pass
+        else:
+            raise e
+
+    domain_schema = model.create_schema(
+        SchemaDef(name=sname, annotations={"name_style": {"underline_space": True}})
+    )
+    subject_table = domain_schema.create_table(
+        TableDef(name="Subject", columns=[ColumnDef("Name", BuiltinType.text)])
+    )
+    with TemporaryDirectory() as tmpdir:
+        ml_instance = DerivaML(hostname=catalog.deriva_server.server, catalog_id=catalog.catalog_id, working_dir=tmpdir)
+        # Use update_navbar=False since we call apply_catalog_annotations() explicitly at the end
+        ml_instance.create_asset(
+            "Image",
+            column_defs=[
+                ColumnDef("Acquisition_Time", BuiltinType.timestamp),
+                ColumnDef("Acquisition_Date", BuiltinType.date),
+            ],
+            referenced_tables=[subject_table],
+            update_navbar=False,
+        )
+        ml_instance.apply_catalog_annotations()
+
+
+def destroy_demo_catalog(catalog):
+    """Destroy the demo catalog and clean up resources.
+
+    Args:
+        catalog: The ErmrestCatalog instance to destroy.
+
+    Returns:
+        None. Destroys the catalog.
+    """
+    catalog.delete_ermrest_catalog(really=True)
+
+
+def create_demo_catalog(
+    hostname,
+    domain_schema="demo-schema",
+    project_name="ml-test",
+    populate=True,
+    create_features=False,
+    create_datasets=False,
+    on_exit_delete=True,
+    logging_level=logging.WARNING,
+) -> ErmrestCatalog:
+    test_catalog = create_ml_catalog(hostname, project_name=project_name)
+    if on_exit_delete:
+        atexit.register(destroy_demo_catalog, test_catalog)
+
+    try:
+        with TemporaryDirectory() as tmpdir:
+            try:
+                subprocess.run(
+                    "git clone https://github.com/informatics-isi-edu/deriva-ml.git",
+                    capture_output=True,
+                    text=True,
+                    shell=True,
+                    check=True,
+                    cwd=tmpdir,
+                )
+            except subprocess.CalledProcessError:
+                raise DerivaMLException("Cannot clone deriva-ml repo from GitHub.")
+
+            create_domain_schema(test_catalog, domain_schema)
+
+            if populate or create_features or create_datasets:
+                ml_instance = DerivaML(
+                    hostname,
+                    catalog_id=test_catalog.catalog_id,
+                    default_schema=domain_schema,
+                    working_dir=tmpdir,
+                    logging_level=logging_level,
+                )
+                ml_instance.add_term(
+                    MLVocab.workflow_type,
+                    "Demo Catalog Creation",
+                    description="A Workflow that creates a new catalog and populates it with demo data.",
+                )
+                populate_workflow = ml_instance.create_workflow(
+                    name="Demo Creation", workflow_type="Demo Catalog Creation"
+                )
+                execution = ml_instance.create_execution(
+                    workflow=populate_workflow, configuration=ExecutionConfiguration()
+                )
+                with execution.execute() as exe:
+                    populate_demo_catalog(exe)
+                    if create_features:
+                        create_demo_features(exe)
+                    if create_datasets:
+                        create_demo_datasets(exe)
+                execution.upload_execution_outputs()
+
+    except Exception as e:
+        # on failure, delete catalog and re-raise exception
+        test_catalog.delete_ermrest_catalog(really=True)
+        raise e
+    return test_catalog
+
+
+class DemoML(DerivaML):
+    def __init__(
+        self,
+        hostname,
+        catalog_id,
+        cache_dir: str | None = None,
+        working_dir: str | None = None,
+        use_minid=True,
+    ):
+        super().__init__(
+            hostname=hostname,
+            catalog_id=catalog_id,
+            project_name="ml-test",
+            cache_dir=cache_dir,
+            working_dir=working_dir,
+            use_minid=use_minid,
+        )
+
+
+class DerivaMLDemoCatalogCLI(BaseCLI):
+    """Main class to part command line arguments and call model"""
+
+    def __init__(self, description, epilog, **kwargs):
+        BaseCLI.__init__(self, description, epilog, **kwargs)
+        # Optional domain schema name for the demo catalog. Defaults to None if not provided.
+        self.parser.add_argument(
+            "--domain_schema",
+            type=str,
+            default="demo-schema",
+            help="Name of the domain schema to create/use for the demo catalog (default: demo-schema).",
+        )
+
+    @staticmethod
+    def _coerce_number(val: str):
+        """
+        Try to convert a string to int, then float; otherwise return str.
+        """
+        try:
+            return int(val)
+        except ValueError:
+            try:
+                return float(val)
+            except ValueError:
+                return val
+
+    def main(self) -> ErmrestCatalog:
+        """Parse arguments and set up execution environment."""
+        args = self.parse_cli()
+        if not args.host:
+            raise ValueError("Host must be specified.")
+        demo_catalog = create_demo_catalog(args.host, args.domain_schema)
+        return demo_catalog
+
+
+def main() -> None:
+    """Main entry point for the notebook runner CLI.
+
+    Creates and runs the DerivaMLRunNotebookCLI instance.
+
+    Returns:
+        None. Executes the CLI.
+    """
+    cli = DerivaMLDemoCatalogCLI(description="Create a Deriva ML Sample Catalog", epilog="")
+    catalog = cli.main()
+    print("Created catalog: {}".format(catalog._server_uri))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        print("Error creating catalog:")
+        print(e)
+        exit(1)

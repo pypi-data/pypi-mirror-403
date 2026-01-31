@@ -1,0 +1,237 @@
+"""Dataset management mixin for DerivaML.
+
+This module provides the DatasetMixin class which handles
+dataset operations including finding, creating, looking up,
+deleting, and managing dataset elements.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Callable, Iterable
+
+# Deriva imports - use importlib to avoid shadowing by local 'deriva.py' files
+import importlib
+_ermrest_model = importlib.import_module("deriva.core.ermrest_model")
+Table = _ermrest_model.Table
+
+from pydantic import ConfigDict, validate_call
+
+from deriva_ml.core.definitions import RID, MLVocab
+from deriva_ml.core.exceptions import DerivaMLException, DerivaMLTableTypeError
+from deriva_ml.dataset.aux_classes import DatasetSpec
+
+if TYPE_CHECKING:
+    from deriva_ml.dataset.dataset import Dataset
+    from deriva_ml.dataset.dataset_bag import DatasetBag
+    from deriva_ml.model.catalog import DerivaModel
+
+
+class DatasetMixin:
+    """Mixin providing dataset management operations.
+
+    This mixin requires the host class to have:
+        - model: DerivaModel instance
+        - ml_schema: str - name of the ML schema
+        - domain_schema: str - name of the domain schema
+        - s3_bucket: str | None - S3 bucket URL for dataset storage
+        - use_minid: bool - whether to use MINIDs
+        - pathBuilder(): method returning catalog path builder
+        - _dataset_table: property returning the Dataset table
+
+    Methods:
+        find_datasets: List all datasets in the catalog
+        create_dataset: Create a new dataset
+        lookup_dataset: Look up a dataset by RID or spec
+        delete_dataset: Delete a dataset
+        list_dataset_element_types: List types that can be added to datasets
+        add_dataset_element_type: Add a new element type to datasets
+        download_dataset_bag: Download a dataset as a bag
+    """
+
+    # Type hints for IDE support - actual attributes/methods from host class
+    model: "DerivaModel"
+    ml_schema: str
+    domain_schemas: frozenset[str]
+    default_schema: str | None
+    s3_bucket: str | None
+    use_minid: bool
+    pathBuilder: Callable[[], Any]
+
+    @property
+    def _dataset_table(self) -> Table:
+        """Get the Dataset table. Must be provided by host class."""
+        raise NotImplementedError
+
+    def find_datasets(self, deleted: bool = False) -> Iterable["Dataset"]:
+        """List all datasets in the catalog.
+
+        Args:
+            deleted: If True, include datasets that have been marked as deleted.
+
+        Returns:
+            Iterable of Dataset objects.
+
+        Example:
+            >>> datasets = list(ml.find_datasets())
+            >>> for ds in datasets:
+            ...     print(f"{ds.dataset_rid}: {ds.description}")
+        """
+        # Import here to avoid circular imports
+        from deriva_ml.dataset.dataset import Dataset
+
+        # Get datapath to the Dataset table
+        pb = self.pathBuilder()
+        dataset_path = pb.schemas[self._dataset_table.schema.name].tables[self._dataset_table.name]
+
+        if deleted:
+            filtered_path = dataset_path
+        else:
+            filtered_path = dataset_path.filter(
+                (dataset_path.Deleted == False) | (dataset_path.Deleted == None)  # noqa: E711, E712
+            )
+
+        # Create Dataset objects - dataset_types is now a property that fetches from catalog
+        datasets = []
+        for dataset in filtered_path.entities().fetch():
+            datasets.append(
+                Dataset(
+                    self,  # type: ignore[arg-type]
+                    dataset_rid=dataset["RID"],
+                    description=dataset["Description"],
+                )
+            )
+        return datasets
+
+    def lookup_dataset(self, dataset: RID | DatasetSpec, deleted: bool = False) -> "Dataset":
+        """Look up a dataset by RID or DatasetSpec.
+
+        Args:
+            dataset: Dataset RID or DatasetSpec to look up.
+            deleted: If True, include datasets that have been marked as deleted.
+
+        Returns:
+            Dataset: The dataset object for the specified RID.
+
+        Raises:
+            DerivaMLException: If the dataset is not found.
+
+        Example:
+            >>> dataset = ml.lookup_dataset("4HM")
+            >>> print(f"Version: {dataset.current_version}")
+        """
+        if isinstance(dataset, DatasetSpec):
+            dataset_rid = dataset.rid
+        else:
+            dataset_rid = dataset
+
+        try:
+            return [ds for ds in self.find_datasets(deleted=deleted) if ds.dataset_rid == dataset_rid][0]
+        except IndexError:
+            raise DerivaMLException(f"Dataset {dataset_rid} not found.")
+
+    def delete_dataset(self, dataset: "Dataset", recurse: bool = False) -> None:
+        """Delete a dataset from the catalog.
+
+        Args:
+            dataset: The dataset to delete.
+            recurse: If True, delete the dataset along with any nested datasets. (Default value = False)
+        """
+        # Get association table entries for this dataset_table
+        # Delete association table entries
+        dataset_rid = dataset.dataset_rid
+        if not self.model.is_dataset_rid(dataset.dataset_rid):
+            raise DerivaMLException("Dataset_rid is not a dataset.")
+
+        if parents := dataset.list_dataset_parents():
+            raise DerivaMLException(f'Dataset "{dataset}" is in a nested dataset: {parents}.')
+
+        pb = self.pathBuilder()
+        dataset_path = pb.schemas[self._dataset_table.schema.name].tables[self._dataset_table.name]
+
+        # list_dataset_children returns Dataset objects, so extract their RIDs
+        child_rids = [ds.dataset_rid for ds in dataset.list_dataset_children()] if recurse else []
+        rid_list = [dataset_rid] + child_rids
+        dataset_path.update([{"RID": r, "Deleted": True} for r in rid_list])
+
+    def list_dataset_element_types(self) -> Iterable[Table]:
+        """List the types of entities that can be added to a dataset.
+
+        Returns:
+            An iterable of Table objects that can be included as an element of a dataset.
+        """
+
+        def is_domain_or_dataset_table(table: Table) -> bool:
+            return self.model.is_domain_schema(table.schema.name) or table.name == self._dataset_table.name
+
+        return [t for a in self._dataset_table.find_associations() if is_domain_or_dataset_table(t := a.other_fkeys.pop().pk_table)]
+
+    @validate_call(config=ConfigDict(arbitrary_types_allowed=True))
+    def add_dataset_element_type(self, element: str | Table) -> Table:
+        """Makes it possible to add objects from the specified table to a dataset.
+
+        A dataset is a heterogeneous collection of objects, each of which comes from a different table.
+        This routine adds the specified table as a valid element type for datasets.
+
+        Args:
+            element: Name of the table or table object that is to be added to the dataset.
+
+        Returns:
+            The table object that was added to the dataset.
+        """
+        # Import here to avoid circular imports
+        from deriva_ml.dataset.catalog_graph import CatalogGraph
+
+        # Add table to map
+        element_table = self.model.name_to_table(element)
+        atable_def = Table.define_association([self._dataset_table, element_table])
+        try:
+            table = self.model.create_table(atable_def)
+        except ValueError as e:
+            if "already exists" in str(e):
+                table = self.model.name_to_table(atable_def["table_name"])
+            else:
+                raise e
+
+        # self.model = self.catalog.getCatalogModel()
+        annotations = CatalogGraph(self, s3_bucket=self.s3_bucket, use_minid=self.use_minid).generate_dataset_download_annotations()  # type: ignore[arg-type]
+        self._dataset_table.annotations.update(annotations)
+        self.model.model.apply()
+        return table
+
+    def download_dataset_bag(
+        self,
+        dataset: DatasetSpec,
+    ) -> "DatasetBag":
+        """Downloads a dataset to the local filesystem.
+
+        Downloads a dataset specified by DatasetSpec to the local filesystem. If the catalog
+        has s3_bucket configured and use_minid is enabled, the bag will be uploaded to S3
+        and registered with the MINID service.
+
+        Args:
+            dataset: Specification of the dataset to download, including version and materialization options.
+
+        Returns:
+            DatasetBag: Object containing:
+                - path: Local filesystem path to downloaded dataset
+                - rid: Dataset's Resource Identifier
+                - minid: Dataset's Minimal Viable Identifier (if MINID enabled)
+
+        Note:
+            MINID support requires s3_bucket to be configured when creating the DerivaML instance.
+            The catalog's use_minid setting controls whether MINIDs are created.
+
+        Examples:
+            Download with default options:
+                >>> spec = DatasetSpec(rid="1-abc123")
+                >>> bag = ml.download_dataset_bag(dataset=spec)
+                >>> print(f"Downloaded to {bag.path}")
+        """
+        if not self.model.is_dataset_rid(dataset.rid):
+            raise DerivaMLTableTypeError("Dataset", dataset.rid)
+        ds = self.lookup_dataset(dataset)
+        return ds.download_dataset_bag(
+            version=dataset.version,
+            materialize=dataset.materialize,
+            use_minid=self.use_minid,
+        )
