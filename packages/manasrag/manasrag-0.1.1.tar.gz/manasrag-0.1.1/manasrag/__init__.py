@@ -1,0 +1,526 @@
+# flake8: noqa
+from pathlib import Path
+from typing import Any, NamedTuple
+
+from haystack.dataclasses import Document
+
+from manasrag._logging import (
+    _setup_component_loggers,
+    get_logger,
+    LOG_LEVELS,
+)
+from manasrag.core import (
+    Entity,
+    Relation,
+    NodeType,
+    Community,
+    CommunitySchema,
+    QueryParam,
+    RetrievalMode,
+)
+from manasrag.stores import (
+    GraphDocumentStore,
+    NetworkXGraphStore,
+    Neo4jGraphStore,
+    EntityVectorStore,
+    ChunkVectorStore,
+    KVStore,
+    DocIdIndex,
+)
+from manasrag.pipelines import ManasRAGIndexingPipeline, ManasRAGQueryPipeline
+from manasrag.components import (
+    EntityExtractor,
+    CommunityDetector,
+    CommunityReportGenerator,
+    HierarchicalEntityExtractor,
+    HierarchicalClusterDetector,
+    EntityRetriever,
+    HierarchicalRetriever,
+    ContextBuilder,
+    PathFinder,
+    PathScorer,
+    GraphVisualizer,
+)
+from manasrag.document_loader import DocumentLoader
+
+__all__ = [
+    # Core
+    "Entity",
+    "Relation",
+    "NodeType",
+    "Community",
+    "CommunitySchema",
+    "QueryParam",
+    "RetrievalMode",
+    # Stores
+    "GraphDocumentStore",
+    "NetworkXGraphStore",
+    "Neo4jGraphStore",
+    "EntityVectorStore",
+    "ChunkVectorStore",
+    "KVStore",
+    "DocIdIndex",
+    # Components
+    "EntityExtractor",
+    "CommunityDetector",
+    "CommunityReportGenerator",
+    "HierarchicalEntityExtractor",
+    "HierarchicalClusterDetector",
+    "EntityRetriever",
+    "HierarchicalRetriever",
+    "ContextBuilder",
+    "PathFinder",
+    "PathScorer",
+    "GraphVisualizer",
+    # Pipelines
+    "ManasRAGIndexingPipeline",
+    "ManasRAGQueryPipeline",
+    # High-level API
+    "ManasRAG",
+    # Types
+    "ProjectPipelines",
+    # Document loading
+    "DocumentLoader",
+]
+
+__version__ = "0.1.0"
+
+
+class ProjectPipelines(NamedTuple):
+    """Per-project pipeline components."""
+
+    indexing_pipeline: ManasRAGIndexingPipeline
+    query_pipeline: ManasRAGQueryPipeline
+    graph_store: GraphDocumentStore
+
+
+class ManasRAG:
+    """High-level API for ManasRAG.
+
+    This class provides a simple interface for indexing and querying
+    documents using the hierarchical knowledge approach.
+
+    Supports ``project_id`` for full data isolation – each project gets
+    its own sub-directory with independent stores and pipelines.
+
+    Example:
+        ```python
+        from manasrag import ManasRAG
+
+        # Initialize
+        manas = ManasRAG(working_dir="./manas_data")
+
+        # Index documents
+        manas.index("path/to/document.txt")
+
+        # Query
+        result = manas.query("What are the main themes?")
+        print(result["answer"])
+
+        # Multi-project usage
+        manas.index([Document(id="d1", content="AI content")], project_id="proj_a")
+        manas.query("What is AI?", project_id="proj_a")
+        ```
+    """
+
+    def __init__(
+        self,
+        working_dir: str = "./hirag_cache",
+        graph_backend: str = "networkx",
+        generator: Any = None,
+        entity_store: Any = None,
+        chunk_store: Any = None,
+        top_k: int = 20,
+        top_m: int = 10,
+        chunk_size: int = 1200,
+        chunk_overlap: int = 100,
+        log_level: str = "INFO",
+    ):
+        """Initialize HiRAG.
+
+        Args:
+            working_dir: Directory for storing cached data.
+            graph_backend: Graph storage backend ("networkx" or "neo4j").
+            generator: LLM generator for entity extraction and answer generation.
+            entity_store: Vector store for entity embeddings.
+            chunk_store: Document store for text chunks.
+            top_k: Number of entities to retrieve.
+            top_m: Key entities per community for path finding.
+            chunk_size: Chunk size for document splitting.
+            chunk_overlap: Overlap between chunks.
+            log_level: Logging level (TRACE, DEBUG, INFO, WARNING, ERROR).
+        """
+        self.working_dir = working_dir
+        self.graph_backend = graph_backend
+        self.generator = generator
+        self.entity_store = entity_store
+        self.chunk_store = chunk_store
+        self.top_k = top_k
+        self.top_m = top_m
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.log_level = log_level
+
+        # Validate log level
+        if log_level.upper() not in LOG_LEVELS:
+            raise ValueError(
+                f"Invalid log_level: {log_level}. Valid: {list(LOG_LEVELS.keys())}"
+            )
+
+        # Configure logging
+        _setup_component_loggers(log_level)
+        self._logger = get_logger("ManasRAG")
+
+        self._logger.info(f"ManasRAG initialized (working_dir={working_dir}, log_level={log_level})")
+
+        # Per-project pipeline cache: project_id -> ProjectPipelines
+        self._project_pipelines: dict[str, ProjectPipelines] = {}
+
+        # Pre-create the "default" project for backward compatibility
+        default = self._create_project_pipelines("default")
+        self._project_pipelines["default"] = default
+
+        # Backward-compatible aliases pointing to the default project
+        self.indexing_pipeline = default.indexing_pipeline
+        self.query_pipeline = default.query_pipeline
+        self.graph_store = default.graph_store
+
+        # Initialize visualizer
+        self.visualizer = GraphVisualizer(output_dir=str(Path(working_dir) / "visualizations"))
+
+    # ===== Project Pipeline Management =====
+
+    def _create_project_pipelines(self, project_id: str) -> ProjectPipelines:
+        """Create isolated stores and pipelines for a project.
+
+        Args:
+            project_id: Project identifier used for directory and namespace isolation.
+
+        Returns:
+            ProjectPipelines containing (indexing_pipeline, query_pipeline, graph_store).
+        """
+        project_dir = str(Path(self.working_dir) / project_id)
+        namespace = f"manas_{project_id}"
+
+        # Graph store
+        if self.graph_backend == "networkx":
+            graph_store = NetworkXGraphStore(
+                namespace=namespace,
+                working_dir=project_dir,
+            )
+        else:
+            from manasrag.stores.neo4j_store import Neo4jGraphStore
+
+            graph_store = Neo4jGraphStore(
+                namespace=namespace,
+                working_dir=project_dir,
+            )
+
+        # Components
+        entity_extractor = EntityExtractor(generator=self.generator) if self.generator else None
+        community_detector = CommunityDetector()
+        report_generator = (
+            CommunityReportGenerator(generator=self.generator) if self.generator else None
+        )
+
+        # Pipelines
+        indexing_pipeline = ManasRAGIndexingPipeline(
+            graph_store=graph_store,
+            document_store=self.chunk_store,
+            entity_store=self.entity_store,
+            chunk_store=self.chunk_store,
+            entity_extractor=entity_extractor,
+            community_detector=community_detector,
+            report_generator=report_generator,
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            working_dir=project_dir,
+        )
+
+        query_pipeline = ManasRAGQueryPipeline(
+            graph_store=graph_store,
+            entity_store=self.entity_store,
+            chunk_store=self.chunk_store,
+            generator=self.generator,
+            top_k=self.top_k,
+            top_m=self.top_m,
+        )
+
+        return ProjectPipelines(
+            indexing_pipeline=indexing_pipeline,
+            query_pipeline=query_pipeline,
+            graph_store=graph_store,
+        )
+
+    def _get_project(self, project_id: str) -> ProjectPipelines:
+        """Return cached ProjectPipelines for a project.
+
+        Lazily creates and caches pipelines on first access.
+
+        Args:
+            project_id: Project identifier.
+
+        Returns:
+            ProjectPipelines containing (indexing_pipeline, query_pipeline, graph_store).
+        """
+        if project_id not in self._project_pipelines:
+            self._project_pipelines[project_id] = self._create_project_pipelines(project_id)
+        return self._project_pipelines[project_id]
+
+    def get_graph_store(self, project_id: str = "default") -> GraphDocumentStore:
+        """Get the graph store for a project.
+
+        Args:
+            project_id: Project identifier.
+
+        Returns:
+            GraphDocumentStore instance for the project.
+        """
+        return self._get_project(project_id).graph_store
+
+    def index(
+        self,
+        documents: list[Document],
+        project_id: str = "default",
+        incremental: bool = False,
+        force_reindex: bool = False,
+    ) -> dict:
+        """Index documents into the ManasRAG system.
+
+        Args:
+            documents: List of Haystack Document objects to index.
+                Use ``Document(id=..., content=...)`` to assign document IDs
+                for later delete/update operations.
+            project_id: Project identifier for data isolation (default: "default").
+            incremental: If True, only index new documents (incremental update).
+            force_reindex: If True, reindex all documents (ignores existing).
+
+        Returns:
+            Dictionary with indexing statistics.
+        """
+        self._logger.info(f"Indexing {len(documents)} documents (project={project_id}, incremental={incremental})")
+        indexing_pipeline = self._get_project(project_id).indexing_pipeline
+        if incremental:
+            return indexing_pipeline.index_incremental(documents, force_reindex=force_reindex)
+        return indexing_pipeline.index(documents)
+
+    def query(
+        self,
+        query: str,
+        mode: str = "hi",
+        param: QueryParam | None = None,
+        project_id: str = "default",
+    ) -> dict:
+        """Query the ManasRAG system.
+
+        Args:
+            query: User query string.
+            mode: Retrieval mode ("naive", "local", "global", "bridge",
+                  "nobridge", "hi").
+            param: Optional QueryParam for detailed configuration.
+            project_id: Project identifier for data isolation (default: "default").
+
+        Returns:
+            Dictionary with:
+                - answer: Generated answer
+                - context: Retrieved context
+                - mode: Actual mode used
+        """
+        self._logger.info(f"Query (project={project_id}, mode={mode}, query_len={len(query)})")
+        query_pipeline = self._get_project(project_id).query_pipeline
+        return query_pipeline.query(query, mode=mode, param=param)
+
+    def query_local(
+        self, query: str, param: QueryParam | None = None, project_id: str = "default"
+    ) -> dict:
+        """Query using local context retrieval (entity-level).
+
+        Args:
+            query: User query string.
+            param: Optional QueryParam for detailed configuration.
+            project_id: Project identifier for data isolation (default: "default").
+
+        Returns:
+            Dictionary with answer and context.
+        """
+        return self.query(query, mode="local", param=param, project_id=project_id)
+
+    def query_global(
+        self, query: str, param: QueryParam | None = None, project_id: str = "default"
+    ) -> dict:
+        """Query using global community reports.
+
+        Args:
+            query: User query string.
+            param: Optional QueryParam for detailed configuration.
+            project_id: Project identifier for data isolation (default: "default").
+
+        Returns:
+            Dictionary with answer and context.
+        """
+        return self.query(query, mode="global", param=param, project_id=project_id)
+
+    def query_nobridge(
+        self, query: str, param: QueryParam | None = None, project_id: str = "default"
+    ) -> dict:
+        """Query using combined local and global knowledge without bridge paths.
+
+        This mode combines entity-level and community-level retrieval
+        without computing cross-community paths, which can be faster
+        for large knowledge graphs.
+
+        Args:
+            query: User query string.
+            param: Optional QueryParam for detailed configuration.
+            project_id: Project identifier for data isolation (default: "default").
+
+        Returns:
+            Dictionary with answer and context.
+        """
+        return self.query(query, mode="nobridge", param=param, project_id=project_id)
+
+    # ===== Document Management =====
+
+    def delete(self, doc_ids: str | list[str], project_id: str = "default") -> dict:
+        """Delete one or more documents by their external doc_ids.
+
+        Removes all associated data: chunks, graph references,
+        orphaned entities, and regenerates communities.
+
+        Args:
+            doc_ids: A single doc_id string or a list of doc_id strings.
+            project_id: Project identifier for data isolation (default: "default").
+
+        Returns:
+            Dictionary with deletion statistics.
+        """
+        doc_ids_list = [doc_ids] if isinstance(doc_ids, str) else doc_ids
+        self._logger.info(f"Deleting {len(doc_ids_list)} documents (project={project_id})")
+        indexing_pipeline = self._get_project(project_id).indexing_pipeline
+        if isinstance(doc_ids, str):
+            return indexing_pipeline.delete_document(doc_ids)
+        return indexing_pipeline.delete_documents(doc_ids)
+
+    def update(self, doc_id: str, content: str, project_id: str = "default") -> dict:
+        """Update a document by deleting and re-indexing it.
+
+        Args:
+            doc_id: The external document ID.
+            content: New content for the document.
+            project_id: Project identifier for data isolation (default: "default").
+
+        Returns:
+            Dictionary with update statistics.
+        """
+        indexing_pipeline = self._get_project(project_id).indexing_pipeline
+        return indexing_pipeline.update_document(doc_id, content)
+
+    def list_documents(self, project_id: str = "default") -> list[str]:
+        """List all registered external document IDs.
+
+        Args:
+            project_id: Project identifier for data isolation (default: "default").
+
+        Returns:
+            Sorted list of doc_id strings.
+        """
+        indexing_pipeline = self._get_project(project_id).indexing_pipeline
+        return indexing_pipeline.list_documents()
+
+    def has_document(self, doc_id: str, project_id: str = "default") -> bool:
+        """Check if a document ID is registered.
+
+        Args:
+            doc_id: The external document ID.
+            project_id: Project identifier for data isolation (default: "default").
+
+        Returns:
+            True if the doc_id exists, False otherwise.
+        """
+        indexing_pipeline = self._get_project(project_id).indexing_pipeline
+        return indexing_pipeline.has_document(doc_id)
+
+    @property
+    def communities(self) -> dict:
+        """Get detected communities."""
+        return self.graph_store._communities if hasattr(self.graph_store, "_communities") else {}
+
+    @property
+    def reports(self) -> dict:
+        """Get community reports."""
+        return self.graph_store._reports if hasattr(self.graph_store, "_reports") else {}
+
+    def visualize(
+        self,
+        kind: str = "all",
+        project_id: str = "default",
+        **kwargs,
+    ) -> dict[str, str]:
+        """Generate visualizations for the knowledge graph.
+
+        This is a convenience method that uses the internal GraphVisualizer
+        to create interactive HTML visualizations.
+
+        Args:
+            kind: Type of visualization to generate:
+                  - "graph": Knowledge graph only
+                  - "communities": Community structure only
+                  - "stats": Entity statistics only
+                  - "all": Generate all visualizations (default)
+            project_id: Project identifier for data isolation (default: "default").
+            **kwargs: Additional arguments passed to specific visualizations.
+                      Common options include:
+                      - layout: "force", "hierarchical", "circular"
+                      - color_by: "entity_type", "community", "degree"
+                      - show_labels: bool
+                      - physics: bool
+                      - filter_min_degree: int
+                      - filter_max_nodes: int
+
+        Returns:
+            Dictionary mapping visualization names to their HTML file paths.
+
+        Example:
+            ```python
+            manas = ManasRAG(working_dir="./manas_data")
+
+            # Generate all visualizations
+            results = manas.visualize(kind="all")
+
+            # Generate only knowledge graph
+            kg_path = manas.visualize(kind="graph", layout="force")
+            ```
+        """
+        graph_store = self._get_project(project_id).graph_store
+        communities = graph_store._communities if hasattr(graph_store, "_communities") else {}
+
+        # Detect communities if not already done
+        if not communities:
+            graph_store._communities = graph_store.clustering()
+            communities = graph_store._communities
+
+        if kind == "graph":
+            return {
+                "graph": self.visualizer.visualize_knowledge_graph(
+                    graph_store=graph_store, **kwargs
+                )
+            }
+        elif kind == "communities":
+            return {
+                "communities": self.visualizer.visualize_communities(
+                    communities=communities, graph_store=graph_store, **kwargs
+                )
+            }
+        elif kind == "stats":
+            return {
+                "stats": self.visualizer.visualize_entity_stats(graph_store=graph_store, **kwargs)
+            }
+        elif kind == "all":
+            return self.visualizer.visualize_all(
+                graph_store=graph_store, communities=communities, **kwargs
+            )
+        else:
+            raise ValueError(
+                f"Unknown visualization type: {kind}. "
+                "Choose from: 'graph', 'communities', 'stats', 'all'"
+            )
