@@ -1,0 +1,126 @@
+name: Docker Publish
+
+on:
+  workflow_call:
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+        description: DockerHub username
+      DOCKERHUB_TOKEN:
+        required: true
+        description: DockerHub access token
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., 1.0.0a1) - required for manual runs'
+        required: true
+        type: string
+
+env:
+  REGISTRY_GHCR: ghcr.io
+  DOCKERHUB_IMAGE: ai-reviewbot
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set lowercase image name
+        id: repo
+        run: echo "image_name=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GHCR }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Determine version and tags
+        id: version
+        run: |
+          # Get version from input or git tag
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          # Parse major.minor
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          echo "major=$MAJOR" >> $GITHUB_OUTPUT
+          echo "major_minor=${MAJOR}.${MINOR}" >> $GITHUB_OUTPUT
+
+          # Check if prerelease
+          if [[ "$VERSION" =~ (alpha|beta|rc|a[0-9]|b[0-9]) ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build tags list
+        id: tags
+        run: |
+          GHCR_IMAGE="${{ env.REGISTRY_GHCR }}/${{ steps.repo.outputs.image_name }}"
+          DOCKER_IMAGE="docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_IMAGE }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          MAJOR="${{ steps.version.outputs.major }}"
+          MAJOR_MINOR="${{ steps.version.outputs.major_minor }}"
+          IS_PRERELEASE="${{ steps.version.outputs.is_prerelease }}"
+
+          # Build tags
+          TAGS="${GHCR_IMAGE}:${VERSION}"
+          TAGS="${TAGS},${GHCR_IMAGE}:${MAJOR_MINOR}"
+          TAGS="${TAGS},${GHCR_IMAGE}:${MAJOR}"
+          TAGS="${TAGS},${DOCKER_IMAGE}:${VERSION}"
+          TAGS="${TAGS},${DOCKER_IMAGE}:${MAJOR_MINOR}"
+          TAGS="${TAGS},${DOCKER_IMAGE}:${MAJOR}"
+
+          # Add latest tag only for stable releases
+          if [ "$IS_PRERELEASE" = "false" ]; then
+            TAGS="${TAGS},${GHCR_IMAGE}:latest"
+            TAGS="${TAGS},${DOCKER_IMAGE}:latest"
+          fi
+
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+          echo "Built tags: $TAGS"
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Update DockerHub description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_IMAGE }}
+          readme-filepath: ./DOCKERHUB_README.md
+          short-description: "AI-powered code review for GitHub & GitLab with inline suggestions"
