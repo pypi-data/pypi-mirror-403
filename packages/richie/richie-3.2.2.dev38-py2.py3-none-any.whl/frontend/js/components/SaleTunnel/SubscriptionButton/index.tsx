@@ -1,0 +1,277 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Button, VariantType } from '@openfun/cunningham-react';
+import { defineMessages, FormattedMessage } from 'react-intl';
+import { useSaleTunnelContext } from 'components/SaleTunnel/GenericSaleTunnel';
+import { validationSchema } from 'components/SaleTunnel/SaleTunnelInformation/SaleTunnelInformationGroup';
+import { useOrders } from 'hooks/useOrders';
+import { useBatchOrder } from 'hooks/useBatchOrder';
+import { OrderCreationPayload } from 'types/Joanie';
+import { useMatchMediaLg } from 'hooks/useMatchMedia';
+import { SubscriptionErrorMessageId } from 'components/PaymentInterfaces/types';
+import { HttpError } from 'utils/errors/HttpError';
+import { Spinner } from 'components/Spinner';
+
+const messages = defineMessages({
+  subscribe: {
+    id: 'components.SaleTunnel.SubscriptionButton.subscribe',
+    defaultMessage: 'Subscribe',
+    description: 'Label of the button to subscribe to a product.',
+  },
+  walkthroughToSignAndSavePayment: {
+    id: 'components.SaleTunnel.SubscriptionButton.walkthroughToSignAndSavePayment',
+    defaultMessage:
+      'To enroll in the training, you will first be invited to sign the training agreement and then to define a payment method if required.',
+    description:
+      'Message explaining the subscription process with a training agreement to sign and a payment method to set.',
+  },
+  walkthroughToSign: {
+    id: 'components.SaleTunnel.SubscriptionButton.walkthroughToSign',
+    defaultMessage:
+      'To enroll in the training, you will be invited to sign the training agreement.',
+    description:
+      'Message explaining the subscription process with only a training agreement to sign.',
+  },
+  walkthroughToSavePayment: {
+    id: 'components.SaleTunnel.SubscriptionButton.walkthroughToSavePayment',
+    defaultMessage: 'To enroll in the training, you will be invited to define a payment method.',
+    description: 'Message explaining the subscription process with only a payment method to set.',
+  },
+  errorDefault: {
+    defaultMessage: 'An error occurred during order creation. Please retry later.',
+    description: 'Error message shown when order creation request failed.',
+    id: 'components.SubscriptionButton.errorDefault',
+  },
+  errorFullProduct: {
+    defaultMessage: 'There are no more places available for this product.',
+    description:
+      'Error message shown when order creation request failed because there is no remaining available seat for the product.',
+    id: 'components.SubscriptionButton.errorFullProduct',
+  },
+  errorAddress: {
+    defaultMessage: 'You must have a billing address.',
+    description: "Error message shown when the user didn't select a billing address.",
+    id: 'components.SubscriptionButton.errorAddress',
+  },
+  errorWithdrawalRight: {
+    defaultMessage: 'You must waive your withdrawal right.',
+    description: "Error message shown when the user must waive its withdrawal right but doesn't.",
+    id: 'components.SubscriptionButton.errorWithdrawalRight',
+  },
+  orderCreationInProgress: {
+    defaultMessage: 'Order creation in progress',
+    description: 'Label for screen reader when an order creation is in progress.',
+    id: 'components.SubscriptionButton.orderCreationInProgress',
+  },
+  batchOrderFormInvalid: {
+    id: 'components.SubscriptionButton.batchOrderFormInvalid',
+    defaultMessage: 'Some required fields are missing in the form.',
+    description: 'Some required fields are missing in the form.',
+  },
+  errorBatchOrderMaxOrders: {
+    id: 'components.SubscriptionButton.errorBatchOrderMaxOrders',
+    defaultMessage:
+      'Unable to create the order: the maximum number of available seats for this offering has been reached. Please contact support for more information.',
+    description:
+      'Error message shown when batch order creation fails because maximum number of orders is reached by an active offering rule.',
+  },
+});
+
+enum ComponentStates {
+  IDLE = 'idle',
+  LOADING = 'loading',
+  ERROR = 'error',
+}
+
+interface Props {
+  buildOrderPayload: (
+    payload: Pick<
+      OrderCreationPayload,
+      'product_id' | 'billing_address' | 'has_waived_withdrawal_right' | 'voucher_code'
+    >,
+  ) => OrderCreationPayload;
+}
+
+const SubscriptionButton = ({ buildOrderPayload }: Props) => {
+  const {
+    order,
+    creditCard,
+    billingAddress,
+    batchOrder,
+    setBatchOrder,
+    batchOrderFormMethods,
+    validateBatchOrder,
+    hasWaivedWithdrawalRight,
+    product,
+    nextStep,
+    runSubmitCallbacks,
+    props: saleTunnelProps,
+    voucherCode,
+    needsPayment,
+  } = useSaleTunnelContext();
+  const { methods: orderMethods } = useOrders(undefined, { enabled: false });
+  const { methods: batchOrderMethods } = useBatchOrder();
+  const [state, setState] = useState<ComponentStates>(ComponentStates.IDLE);
+  const [error, setError] = useState<SubscriptionErrorMessageId | string>();
+  const [isBatchOrderValid, setIsBatchOrderValid] = useState(false);
+  const isMobile = useMatchMediaLg();
+
+  const handleError = (
+    messageId: SubscriptionErrorMessageId | string = SubscriptionErrorMessageId.ERROR_DEFAULT,
+  ) => {
+    setState(ComponentStates.ERROR);
+    setError(messageId);
+  };
+
+  const createOrder = async () => {
+    setState(ComponentStates.LOADING);
+
+    try {
+      await runSubmitCallbacks();
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (_error) {
+      setState(ComponentStates.IDLE);
+      return;
+    }
+
+    if (!billingAddress && needsPayment) {
+      handleError(SubscriptionErrorMessageId.ERROR_ADDRESS);
+      return;
+    }
+
+    if (!saleTunnelProps.isWithdrawable && !hasWaivedWithdrawalRight && needsPayment) {
+      handleError(SubscriptionErrorMessageId.ERROR_WITHDRAWAL_RIGHT);
+      return;
+    }
+
+    const payload = buildOrderPayload({
+      product_id: product.id,
+      billing_address: billingAddress!,
+      has_waived_withdrawal_right: hasWaivedWithdrawalRight,
+      voucher_code: voucherCode,
+    });
+
+    orderMethods.create(payload, {
+      onError: async (createOrderError: HttpError) => {
+        if (createOrderError.responseBody) {
+          const responseErrors = await createOrderError.responseBody;
+          if ('max_validated_orders' in responseErrors) {
+            handleError(SubscriptionErrorMessageId.ERROR_FULL_PRODUCT);
+          }
+        }
+        handleError();
+      },
+    });
+  };
+
+  const createBatchOrder = async () => {
+    setState(ComponentStates.LOADING);
+    try {
+      await runSubmitCallbacks();
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (_error) {
+      setState(ComponentStates.IDLE);
+      return;
+    }
+    if (!batchOrder) return;
+    const isFormValid = await batchOrderFormMethods?.trigger();
+    if (!isFormValid) {
+      handleError(SubscriptionErrorMessageId.ERROR_BATCH_ORDER_FORM_INVALID);
+      return;
+    }
+    batchOrderMethods.create(batchOrder, {
+      onError: async (createBatchOrderError: HttpError) => {
+        if (createBatchOrderError.code === 422) {
+          handleError(SubscriptionErrorMessageId.ERROR_BATCH_ORDER_MAX_ORDERS);
+          return;
+        }
+        handleError();
+      },
+      onSuccess: async (createdBatchOrder: any) => {
+        if (createdBatchOrder.id) {
+          setBatchOrder(createdBatchOrder);
+          validateBatchOrder();
+        }
+      },
+    });
+  };
+
+  const walkthroughMessages = useMemo(() => {
+    if (product.contract_definition && product.price > 0) {
+      return messages.walkthroughToSignAndSavePayment;
+    } else if (product.contract_definition && product.price === 0) {
+      return messages.walkthroughToSign;
+    } else if (!product.contract_definition && product.price > 0 && needsPayment) {
+      return messages.walkthroughToSavePayment;
+    }
+  }, [product, creditCard, needsPayment]);
+
+  useEffect(() => {
+    if (order) nextStep();
+  }, [order]);
+
+  useEffect(() => {
+    if (error && [ComponentStates.IDLE, ComponentStates.LOADING].includes(state)) {
+      setError(undefined);
+    }
+    if (state === ComponentStates.ERROR) {
+      document.querySelector<HTMLElement>('#sale-tunnel-subscription-error')?.focus();
+    }
+  }, [state]);
+
+  useEffect(() => {
+    if (batchOrder) {
+      validationSchema.isValid(batchOrder).then((isValid) => setIsBatchOrderValid(isValid));
+    }
+  }, [batchOrder]);
+
+  return (
+    <>
+      <div style={{ maxWidth: '680px' }} className="mb-s" data-testid="walkthrough-banner">
+        {walkthroughMessages && (
+          <Alert type={VariantType.INFO}>
+            <FormattedMessage
+              {...walkthroughMessages}
+              values={{ credictCarNumbers: creditCard?.last_numbers }}
+            />
+          </Alert>
+        )}
+      </div>
+      <Button
+        onClick={batchOrder ? createBatchOrder : createOrder}
+        fullWidth={isMobile}
+        disabled={state === ComponentStates.LOADING || (batchOrder && !isBatchOrderValid)}
+        {...(state === ComponentStates.ERROR && {
+          'aria-describedby': 'sale-tunnel-payment-error',
+        })}
+      >
+        {state === ComponentStates.LOADING ? (
+          <Spinner theme="light" aria-labelledby="order-creation-in-progress">
+            <span id="order-creation-in-progress">
+              <FormattedMessage {...messages.orderCreationInProgress} />
+            </span>
+          </Spinner>
+        ) : (
+          <FormattedMessage {...messages.subscribe} />
+        )}
+      </Button>
+      {state === ComponentStates.ERROR && (
+        <p className="subscription-button__error" id="sale-tunnel-subscription-error" tabIndex={-1}>
+          {!error || messages.hasOwnProperty(error) ? (
+            <FormattedMessage
+              {...messages[
+                (error as Exclude<
+                  SubscriptionErrorMessageId,
+                  SubscriptionErrorMessageId.ERROR_ABORT
+                >) || SubscriptionErrorMessageId.ERROR_DEFAULT
+              ]}
+            />
+          ) : (
+            error
+          )}
+        </p>
+      )}
+    </>
+  );
+};
+
+export default SubscriptionButton;

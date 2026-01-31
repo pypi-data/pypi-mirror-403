@@ -1,0 +1,333 @@
+import fetchMock from 'fetch-mock';
+import { cleanup, screen } from '@testing-library/react';
+import userEvent, { UserEvent } from '@testing-library/user-event';
+import { RichieContextFactory as mockRichieContextFactory } from 'utils/test/factories/richie';
+import { OrganizationFactory, OrganizationQuoteFactory } from 'utils/test/factories/joanie';
+import { expectNoSpinner } from 'utils/test/expectSpinner';
+import { setupJoanieSession } from 'utils/test/wrappers/JoanieAppWrapper';
+import { render } from 'utils/test/render';
+import { PaymentMethod } from 'components/PaymentInterfaces/types';
+import { BatchOrderState } from 'types/Joanie';
+import { browserDownloadFromBlob } from 'utils/download';
+import TeacherDashboardOrganizationQuotes from '.';
+
+jest.mock('utils/context', () => ({
+  __esModule: true,
+  default: mockRichieContextFactory({
+    authentication: { backend: 'fonzie', endpoint: 'https://auth.endpoint.test' },
+    joanie_backend: { endpoint: 'https://joanie.endpoint' },
+  }).one(),
+}));
+
+jest.mock('utils/download', () => ({
+  browserDownloadFromBlob: jest.fn(),
+}));
+
+let user: UserEvent;
+
+describe('full process for the organization quotes dashboard', () => {
+  beforeEach(() => {
+    user = userEvent.setup();
+    jest.resetAllMocks();
+  });
+  setupJoanieSession();
+
+  it('should works with the full process workflow for any payment methods', async () => {
+    fetchMock.get(`https://joanie.endpoint/api/v1.0/organizations/`, []);
+
+    const organization = OrganizationFactory({
+      abilities: {
+        can_submit_for_signature_batch_order: true,
+        confirm_bank_transfer: true,
+        confirm_quote: true,
+        download_quote: true,
+        sign_contracts: true,
+      },
+    }).one();
+    fetchMock.get('https://joanie.endpoint/api/v1.0/organizations/1/', organization);
+
+    const quoteQuoted = OrganizationQuoteFactory({
+      batch_order: {
+        state: BatchOrderState.QUOTED,
+        payment_method: PaymentMethod.CARD_PAYMENT,
+        available_actions: { next_action: 'confirm_quote' },
+      },
+      organization_signed_on: undefined,
+    }).one();
+    const quoteSendForSign = OrganizationQuoteFactory({
+      id: quoteQuoted.id,
+      batch_order: {
+        state: BatchOrderState.TO_SIGN,
+        payment_method: PaymentMethod.CARD_PAYMENT,
+        contract_submitted: false,
+        available_actions: { next_action: 'submit_for_signature' },
+      },
+    }).one();
+    const quoteWaitingForSign = OrganizationQuoteFactory({
+      id: quoteQuoted.id,
+      batch_order: {
+        state: BatchOrderState.TO_SIGN,
+        payment_method: PaymentMethod.CARD_PAYMENT,
+        contract_submitted: true,
+        available_actions: { next_action: null },
+      },
+    }).one();
+    const quotePending = OrganizationQuoteFactory({
+      id: quoteQuoted.id,
+      batch_order: {
+        state: BatchOrderState.PENDING,
+        payment_method: PaymentMethod.CARD_PAYMENT,
+      },
+    }).one();
+    const quoteProcessingPayment = OrganizationQuoteFactory({
+      id: quoteQuoted.id,
+      batch_order: {
+        state: BatchOrderState.PROCESS_PAYMENT,
+        payment_method: PaymentMethod.CARD_PAYMENT,
+      },
+    }).one();
+    const quoteDownload = OrganizationQuoteFactory({
+      id: quoteQuoted.id,
+      batch_order: {
+        state: BatchOrderState.COMPLETED,
+        payment_method: PaymentMethod.CARD_PAYMENT,
+      },
+    }).one();
+
+    const quotesResponses = [
+      { results: [quoteQuoted], count: 1, previous: null, next: null },
+      { results: [quoteSendForSign], count: 1, previous: null, next: null },
+      { results: [quoteWaitingForSign], count: 1, previous: null, next: null },
+      { results: [quotePending], count: 1, previous: null, next: null },
+      { results: [quoteProcessingPayment], count: 1, previous: null, next: null },
+      { results: [quoteDownload], count: 1, previous: null, next: null },
+      { results: [quoteDownload], count: 1, previous: null, next: null },
+    ];
+
+    fetchMock.get(
+      `https://joanie.endpoint/api/v1.0/organizations/1/quotes/?page=1&page_size=10`,
+      () => quotesResponses.shift(),
+    );
+
+    fetchMock.patch(`https://joanie.endpoint/api/v1.0/organizations/1/confirm-quote/`, 200);
+
+    fetchMock.post(
+      `https://joanie.endpoint/api/v1.0/organizations/1/submit-for-signature-batch-order/`,
+      200,
+    );
+
+    fetchMock.get(
+      `https://joanie.endpoint/api/v1.0/organizations/1/download-quote/?quote_id=${quoteDownload.id}`,
+      {
+        status: 200,
+        body: new Blob(['test']),
+      },
+    );
+
+    render(<TeacherDashboardOrganizationQuotes />, {
+      routerOptions: {
+        path: '/organizations/:organizationId/quotes',
+        initialEntries: ['/organizations/1/quotes'],
+      },
+    });
+
+    await expectNoSpinner();
+
+    // Expand dashboard card
+    const wrapper = screen.getByTestId('dashboard-card__wrapper');
+    const card = wrapper.closest('.dashboard-card');
+    const toggle = await screen.findByTestId('dashboard-card__header__toggle');
+    await user.click(toggle);
+    expect(card).toHaveClass('dashboard-card--opened');
+
+    const downloadQuoteButton = await screen.findByRole('button', {
+      name: /Download quote/i,
+    });
+    expect(downloadQuoteButton).toBeVisible();
+    await user.click(downloadQuoteButton);
+    expect(browserDownloadFromBlob).toHaveBeenCalledTimes(1);
+
+    // First step : confirm quote
+    const confirmQuoteButton = await screen.findByRole('button', { name: /confirm quote/i });
+    expect(confirmQuoteButton).toBeVisible();
+    await user.click(confirmQuoteButton);
+    await screen.findByText(/total amount/i);
+    await user.type(screen.getByLabelText(/total amount/i), '1000');
+    await user.click(screen.getByRole('button', { name: /confirm quote/i }));
+
+    // Second step : to sign quote
+    const sendForSignatureButton = await screen.findByRole('button', {
+      name: /send contract for signature/i,
+    });
+    expect(sendForSignatureButton).toBeVisible();
+    await user.click(sendForSignatureButton);
+
+    // Third step : waiting for signature
+    const waitingSignatureButton = await screen.findByRole('button', {
+      name: /waiting signature/i,
+    });
+    expect(waitingSignatureButton).toBeVisible();
+    expect(waitingSignatureButton).toBeDisabled();
+
+    // Fourth step : pending payment
+    cleanup();
+    render(<TeacherDashboardOrganizationQuotes />, {
+      routerOptions: {
+        path: '/organizations/:organizationId/quotes',
+        initialEntries: ['/organizations/1/quotes'],
+      },
+    });
+    await expectNoSpinner();
+
+    const pendingPaymentButton = await screen.findByRole('button', {
+      name: /waiting payment/i,
+    });
+    expect(pendingPaymentButton).toBeVisible();
+    expect(pendingPaymentButton).toBeDisabled();
+
+    // Fifth step : process payment
+    cleanup();
+    render(<TeacherDashboardOrganizationQuotes />, {
+      routerOptions: {
+        path: '/organizations/:organizationId/quotes',
+        initialEntries: ['/organizations/1/quotes'],
+      },
+    });
+    await expectNoSpinner();
+
+    const processPaymentButton = await screen.findByRole('button', {
+      name: /processing payment/i,
+    });
+    expect(processPaymentButton).toBeVisible();
+    expect(processPaymentButton).toBeDisabled();
+  });
+
+  it('should work with purchase order payment method workflow', async () => {
+    fetchMock.get(`https://joanie.endpoint/api/v1.0/organizations/`, []);
+    const organization = OrganizationFactory({
+      abilities: {
+        can_submit_for_signature_batch_order: true,
+        confirm_bank_transfer: true,
+        confirm_quote: true,
+        download_quote: true,
+        sign_contracts: true,
+      },
+    }).one();
+    fetchMock.get('https://joanie.endpoint/api/v1.0/organizations/1/', organization);
+
+    const quoteQuoted = OrganizationQuoteFactory({
+      batch_order: {
+        state: BatchOrderState.QUOTED,
+        payment_method: PaymentMethod.PURCHASE_ORDER,
+        available_actions: { next_action: 'confirm_quote' },
+      },
+      organization_signed_on: undefined,
+    }).one();
+
+    const quotePurchaseOrder = OrganizationQuoteFactory({
+      id: quoteQuoted.id,
+      batch_order: {
+        state: BatchOrderState.QUOTED,
+        payment_method: PaymentMethod.PURCHASE_ORDER,
+        available_actions: { next_action: 'confirm_purchase_order' },
+      },
+    }).one();
+
+    const quoteSendForSign = OrganizationQuoteFactory({
+      id: quoteQuoted.id,
+      batch_order: {
+        state: BatchOrderState.TO_SIGN,
+        payment_method: PaymentMethod.PURCHASE_ORDER,
+        contract_submitted: false,
+        available_actions: { next_action: 'submit_for_signature' },
+      },
+    }).one();
+
+    const quoteCompleted = OrganizationQuoteFactory({
+      id: quoteQuoted.id,
+      batch_order: {
+        state: BatchOrderState.COMPLETED,
+        payment_method: PaymentMethod.PURCHASE_ORDER,
+      },
+    }).one();
+
+    const quotesResponses = [
+      { results: [quoteQuoted], count: 1, previous: null, next: null },
+      { results: [quotePurchaseOrder], count: 1, previous: null, next: null },
+      { results: [quoteSendForSign], count: 1, previous: null, next: null },
+      { results: [quoteCompleted], count: 1, previous: null, next: null },
+    ];
+
+    fetchMock.get(
+      `https://joanie.endpoint/api/v1.0/organizations/1/quotes/?page=1&page_size=10`,
+      () => quotesResponses.shift(),
+    );
+
+    fetchMock.patch(`https://joanie.endpoint/api/v1.0/organizations/1/confirm-quote/`, 200);
+    fetchMock.patch(
+      `https://joanie.endpoint/api/v1.0/organizations/1/confirm-purchase-order/`,
+      200,
+    );
+    fetchMock.post(
+      `https://joanie.endpoint/api/v1.0/organizations/1/submit-for-signature-batch-order/`,
+      200,
+    );
+
+    render(<TeacherDashboardOrganizationQuotes />, {
+      routerOptions: {
+        path: '/organizations/:organizationId/quotes',
+        initialEntries: ['/organizations/1/quotes'],
+      },
+    });
+
+    await expectNoSpinner();
+
+    // First step: confirm quote
+    const confirmQuoteButton = await screen.findByRole('button', { name: /confirm quote/i });
+    expect(confirmQuoteButton).toBeVisible();
+    await user.click(confirmQuoteButton);
+    await screen.findByText(/total amount/i);
+    await user.type(screen.getByLabelText(/total amount/i), '1000');
+    await user.click(screen.getByRole('button', { name: /confirm quote/i }));
+
+    // Second step: confirm purchase order with reference via modal
+    const confirmPurchaseOrderButton = await screen.findByRole('button', {
+      name: /confirm receipt of purchase order/i,
+    });
+    expect(confirmPurchaseOrderButton).toBeVisible();
+    await user.click(confirmPurchaseOrderButton);
+
+    // Modal should open with purchase order reference input
+    const modalTitle = await screen.findByText(/confirm purchase order/i);
+    expect(modalTitle).toBeInTheDocument();
+
+    const referenceInput = screen.getByLabelText(/purchase order reference/i);
+    expect(referenceInput).toBeInTheDocument();
+
+    // Type reference and confirm
+    await user.type(referenceInput, 'this-is-a-reference');
+    await user.click(screen.getByRole('button', { name: /confirm receipt of purchase order/i }));
+
+    // Third step: send for signature
+    const sendForSignatureButton = await screen.findByRole('button', {
+      name: /send contract for signature/i,
+    });
+    expect(sendForSignatureButton).toBeVisible();
+    await user.click(sendForSignatureButton);
+
+    // Verify completed state
+    cleanup();
+    render(<TeacherDashboardOrganizationQuotes />, {
+      routerOptions: {
+        path: '/organizations/:organizationId/quotes',
+        initialEntries: ['/organizations/1/quotes'],
+      },
+    });
+    await expectNoSpinner();
+
+    // No action button should be visible for completed quote
+    expect(
+      screen.queryByRole('button', { name: /confirm receipt of purchase order/i }),
+    ).not.toBeInTheDocument();
+  });
+});
