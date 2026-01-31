@@ -1,0 +1,99 @@
+Metadata-Version: 2.4
+Name: fitz-pgserver
+Version: 0.1.5
+Summary: Fork of pgserver with Windows crash recovery fix - self-contained PostgreSQL for Python apps
+Project-URL: Homepage, https://github.com/yafitzdev/fitz-pgserver
+Project-URL: Repository, https://github.com/yafitzdev/fitz-pgserver
+Project-URL: Issues, https://github.com/yafitzdev/fitz-pgserver/issues
+Project-URL: Upstream, https://github.com/orm011/pgserver
+Author: Fitz AI Contributors
+Author-email: Oscar Moll <orm@csail.mit.edu>
+License-Expression: Apache-2.0
+License-File: LICENSE
+Keywords: database,embedded,pgserver,pgvector,postgresql,rag
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Database
+Requires-Python: >=3.9
+Requires-Dist: fasteners>=0.19
+Requires-Dist: pgserver>=0.1.4
+Requires-Dist: platformdirs>=4.0.0
+Requires-Dist: psutil>=5.9.0
+Provides-Extra: dev
+Requires-Dist: psycopg2-binary; extra == 'dev'
+Requires-Dist: pytest; extra == 'dev'
+Requires-Dist: sqlalchemy>=2; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# fitz-pgserver
+
+Fork of [pgserver](https://github.com/orm011/pgserver) with Windows crash recovery fix.
+
+## Why this fork?
+
+On Windows, when PostgreSQL crashes or is killed (e.g., via Ctrl+C), the recovery process can fail with a "sharing violation" error on the log file. This happens because:
+
+1. `pg_ctl -l logfile start` opens the log file for writing
+2. postgres subprocess starts and does crash recovery
+3. During recovery, postgres tries to **fsync the entire pgdata directory**
+4. This includes the log file that pg_ctl still has open → sharing violation
+5. postgres retries for 30 seconds before proceeding
+
+## The Fix
+
+Put the log file in the system temp directory (outside pgdata):
+
+```python
+# Before (pgserver):
+self.log = self.pgdata / 'log'
+
+# After (fitz-pgserver):
+temp_dir = Path(tempfile.gettempdir())
+self.log = temp_dir / f'pgserver_log.{uuid.uuid4().hex[:8]}'
+```
+
+By putting the log file outside pgdata, postgres doesn't try to fsync it during recovery, avoiding the sharing violation entirely.
+
+## Installation
+
+```bash
+pip install fitz-pgserver
+```
+
+## Usage
+
+Drop-in replacement for pgserver:
+
+```python
+# Instead of: import pgserver
+import fitz_pgserver as pgserver
+
+db = pgserver.get_server("./my_pgdata")
+uri = db.get_uri()
+# Use uri with psycopg, SQLAlchemy, etc.
+```
+
+## Performance
+
+| Scenario | pgserver | fitz-pgserver |
+|----------|----------|---------------|
+| Normal startup | ~2s | ~2s |
+| First-time init | ~10-13s | ~10-13s |
+| **Crash recovery** | **~33s** (data preserved but slow) | **~1-2s** (28x faster) |
+
+The massive improvement in crash recovery is because we avoid the 30-second sharing violation retry loop.
+
+## License
+
+Apache 2.0 (same as original pgserver)
+
+## Credits
+
+Original pgserver by [Oscar Moll](https://github.com/orm011/pgserver).
