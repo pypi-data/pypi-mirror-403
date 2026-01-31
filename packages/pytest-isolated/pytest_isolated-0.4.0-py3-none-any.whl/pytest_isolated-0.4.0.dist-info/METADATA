@@ -1,0 +1,273 @@
+Metadata-Version: 2.4
+Name: pytest-isolated
+Version: 0.4.0
+Summary: Run marked pytest tests in grouped subprocesses (cross-platform).
+Author: pytest-isolated contributors
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/dyollb/pytest-isolated
+Project-URL: Repository, https://github.com/dyollb/pytest-isolated
+Project-URL: Issues, https://github.com/dyollb/pytest-isolated/issues
+Classifier: Development Status :: 4 - Beta
+Classifier: Framework :: Pytest
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Testing
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pytest>=7.0
+Provides-Extra: dev
+Requires-Dist: pre-commit; extra == "dev"
+Requires-Dist: build; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Provides-Extra: test
+Requires-Dist: pytest-timeout; extra == "test"
+Dynamic: license-file
+
+# pytest-isolated
+
+[![Tests](https://github.com/dyollb/pytest-isolated/actions/workflows/test.yml/badge.svg)](https://github.com/dyollb/pytest-isolated/actions/workflows/test.yml)
+[![PyPI](https://img.shields.io/pypi/v/pytest-isolated.svg)](https://pypi.org/project/pytest-isolated/)
+
+A cross-platform pytest plugin that runs marked tests in isolated subprocesses with intelligent grouping.
+
+## Features
+
+- Run tests in fresh Python subprocesses to prevent state pollution
+- Group related tests to run together in the same subprocess
+- Handles crashes, timeouts, and setup/teardown failures
+- Captures stdout/stderr for failed tests
+- Works with pytest reporters (JUnit XML, etc.)
+- Configurable timeouts to prevent hanging subprocesses
+- Cross-platform: Linux, macOS, Windows
+
+## Cheatsheet for pytest-forked users
+
+This plugin is inspired by [pytest-forked](https://github.com/pytest-dev/pytest-forked). See [pytest-forked migration guide](docs/pytest-forked-migration.md) for a quick reference comparing features.
+
+## Installation
+
+```bash
+pip install pytest-isolated
+```
+
+## Quick Start
+
+Mark tests to run in isolated subprocesses:
+
+```python
+import pytest
+
+@pytest.mark.isolated
+def test_isolated():
+    # Runs in a fresh subprocess
+    assert True
+```
+
+Tests with the same group run together in one subprocess:
+
+```python
+# Using keyword argument
+@pytest.mark.isolated(group="mygroup")
+def test_one():
+    shared_state.append(1)
+
+@pytest.mark.isolated(group="mygroup")
+def test_two():
+    # Sees state from test_one
+    assert len(shared_state) == 2
+
+# Or using positional argument
+@pytest.mark.isolated("mygroup")
+def test_three():
+    shared_state.append(3)
+```
+
+Set timeout per test group:
+
+```python
+@pytest.mark.isolated(timeout=30)
+def test_with_timeout():
+    # This group gets 30 second timeout (overrides global setting)
+    expensive_operation()
+```
+
+**Note:** Tests without an explicit `group` parameter each run in their own unique subprocess for maximum isolation.
+
+### Class and Module Markers
+
+Apply to entire classes to share state between methods:
+
+```python
+@pytest.mark.isolated
+class TestDatabase:
+    def test_setup(self):
+        self.db = create_database()
+
+    def test_query(self):
+        # Shares state with test_setup
+        result = self.db.query("SELECT 1")
+        assert result
+```
+
+Apply to entire modules using `pytestmark`:
+
+```python
+import pytest
+
+pytestmark = pytest.mark.isolated
+
+def test_one():
+    # Runs in isolated subprocess
+    pass
+
+def test_two():
+    # Shares subprocess with test_one
+    pass
+```
+
+## Configuration
+
+### Command Line
+
+```bash
+# Run all tests in isolation (even without @pytest.mark.isolated)
+pytest --isolated
+
+# Set isolated test timeout (seconds)
+pytest --isolated-timeout=60
+
+# Disable subprocess isolation for debugging
+pytest --no-isolation
+
+# Combine with pytest debugger
+pytest --no-isolation --pdb
+```
+
+### pytest.ini / pyproject.toml
+
+```ini
+[pytest]
+isolated_timeout = 300
+isolated_capture_passed = false
+```
+
+Or in `pyproject.toml`:
+
+```toml
+[tool.pytest.ini_options]
+isolated_timeout = "300"
+isolated_capture_passed = false
+```
+
+## Use Cases
+
+### Testing Global State
+
+```python
+@pytest.mark.isolated
+def test_modifies_environ():
+    import os
+    os.environ["MY_VAR"] = "value"
+    # Won't affect other tests
+
+@pytest.mark.isolated
+def test_clean_environ():
+    import os
+    assert "MY_VAR" not in os.environ
+```
+
+### Testing Singletons
+
+```python
+@pytest.mark.isolated(group="singleton_tests")
+def test_singleton_init():
+    from myapp import DatabaseConnection
+    db = DatabaseConnection.get_instance()
+    assert db is not None
+
+@pytest.mark.isolated(group="singleton_tests")
+def test_singleton_reuse():
+    db = DatabaseConnection.get_instance()
+    # Same instance as previous test in group
+```
+
+### Testing Process Resources
+
+```python
+@pytest.mark.isolated
+def test_signal_handlers():
+    import signal
+    signal.signal(signal.SIGTERM, custom_handler)
+    # Won't interfere with pytest
+```
+
+## Output and Reporting
+
+Failed tests automatically capture and display stdout/stderr:
+
+```python
+@pytest.mark.isolated
+def test_failing():
+    print("Debug info")
+    assert False
+```
+
+Works with standard pytest reporters:
+
+```bash
+pytest --junitxml=report.xml --durations=10
+```
+
+## Limitations
+
+**Fixtures**: Module/session fixtures run in each subprocess group. Cannot share fixture objects between parent and subprocess.
+
+**Debugging**: Use `--no-isolation` to run all tests in the main process for easier debugging with `pdb` or IDE debuggers.
+
+**Performance**: Subprocess creation adds ~100-500ms per group. Group related tests to minimize overhead.
+
+## Advanced
+
+### Timeout Handling
+
+```bash
+pytest --isolated-timeout=30
+```
+
+Timeout errors are clearly reported with the group name and timeout duration.
+
+### Crash Detection
+
+If a subprocess crashes, tests in that group are marked as failed with exit code information.
+
+### Subprocess Detection
+
+```python
+import os
+
+if os.environ.get("PYTEST_RUNNING_IN_SUBPROCESS") == "1":
+    # Running in subprocess
+    pass
+```
+
+## Troubleshooting
+
+**Tests timing out**: Increase timeout with `--isolated-timeout=600`
+
+**Missing output**: Enable capture for passed tests with `isolated_capture_passed = true`
+
+**Subprocess crashes**: Check for segfaults, OOM, or signal issues. Run with `-v` for details.
+
+## Contributing
+
+1. Install pre-commit: `pip install pre-commit && pre-commit install`
+1. Run tests: `pytest tests/ -v`
+1. Open an issue before submitting PRs for new features
+
+## License
+
+MIT License - see LICENSE file for details.
