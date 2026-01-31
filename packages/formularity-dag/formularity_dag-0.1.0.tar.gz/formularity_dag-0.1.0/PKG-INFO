@@ -1,0 +1,116 @@
+Metadata-Version: 2.4
+Name: formularity-dag
+Version: 0.1.0
+Summary: A declarative Python library for building computation DAGs
+Project-URL: Homepage, https://github.com/zzk/formularity
+Project-URL: Repository, https://github.com/zzk/formularity
+License-Expression: MIT
+Keywords: computation,dag,dataflow,formula,graph,reactive
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.10
+Provides-Extra: json
+Requires-Dist: dataclasses-json>=0.6.0; extra == 'json'
+Description-Content-Type: text/markdown
+
+# formularity-dag
+
+A declarative Python framework for building computation/formula DAGs (Directed Acyclic Graphs).
+
+## Installation
+
+```bash
+pip install formularity-dag
+
+# With JSON serialization support
+pip install formularity-dag[json]
+```
+
+## Quick Start
+
+```python
+from formularity_dag import InputPlaceholder, ContextPlaceholder, compute, formula_dataclass
+
+# Define a dataclass for structured data
+@formula_dataclass
+class TaxConfig:
+    rate: float = 0.1
+    name: str = "Sales Tax"
+
+# Declare inputs
+price = InputPlaceholder("price", float, "Item price", default_val=10.0)
+quantity = InputPlaceholder("quantity", int, "Number of items", default_val=1)
+
+# Declare context (environment parameters)
+tax_config = ContextPlaceholder("tax_config", TaxConfig, "Tax configuration", default_val=TaxConfig())
+
+# Define computations - dependencies are automatically wired by parameter names
+@compute
+def subtotal(price, quantity):
+    return price * quantity
+
+@compute
+def tax_amount(subtotal, tax_config):
+    return subtotal * tax_config.rate
+
+@compute(is_output=True)
+def total(subtotal, tax_amount):
+    return subtotal + tax_amount
+```
+
+## Evaluating the Graph
+
+```python
+# The graph is automatically created in the module
+graph = __compute_graph__
+
+# Evaluate with inputs
+result = graph.evaluate({
+    "price": 25.0,
+    "quantity": 3,
+    "tax_config": {"rate": 0.08, "name": "State Tax"}
+})
+
+print(result['outputs'])  # {'total': 81.0}
+print(result['state'])    # {'subtotal': 75.0, 'tax_amount': 6.0, 'total': 81.0}
+```
+
+## Features
+
+- **Declarative syntax**: Define inputs and computations, let the framework handle wiring
+- **Automatic dependency resolution**: Parameter names match node names automatically
+- **Type hints support**: Full support for Python type annotations
+- **Dataclass integration**: First-class support for dataclasses with optional JSON serialization
+- **Input/Context separation**: Distinguish between user inputs and environment configuration
+- **Output marking**: Tag specific nodes as final outputs
+
+## API Reference
+
+### Placeholders
+
+- `InputPlaceholder(name, dtype, description, default_val, is_required)` - Declare an input node
+- `ContextPlaceholder(name, dtype, description, default_val, is_required)` - Declare a context node
+
+### Decorators
+
+- `@compute` - Register a computation node
+- `@compute(is_output=True)` - Register as an output node
+- `@compute(mapping={'param': 'node_name'})` - Custom parameter-to-node mapping
+- `@formula_dataclass` - Combined `@dataclass` + `@dataclass_json` decorator
+
+### Utilities
+
+- `is_dataclass_type(dtype)` - Check if a type is a dataclass
+- `dataclass_to_dict(obj)` - Convert dataclass instance to dict
+- `dict_to_dataclass(data, dtype)` - Convert dict to dataclass instance
+
+## License
+
+MIT
