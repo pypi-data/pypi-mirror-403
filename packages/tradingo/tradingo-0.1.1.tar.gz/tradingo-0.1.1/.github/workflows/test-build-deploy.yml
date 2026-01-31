@@ -1,0 +1,46 @@
+name: Tradingo Test build deploy
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        # This is the version of the action for setting up Python, not the Python version.
+        uses: actions/setup-python@v5
+        with:
+          # Semantic version range syntax or exact version of a Python version
+          python-version: "3.11.9"
+          # Optional - x64 or x86 architecture, defaults to x64
+          architecture: "x64"
+      # You can test your matrix by printing the current Python version
+      - name: Setup
+        run: pip install uv
+      - name: Install tradingo
+        run: uv sync
+      - name: Test tradingo
+        run: uv run pytest
+      - name: Formatting check tradingo
+        run: uv run black ./ --check --config pyproject.toml
+      - name: Import check tradingo
+        run: uv run isort ./ --check
+      - name: Ruff check tradingo
+        run: uv run ruff check --config pyproject.toml ./
+      - name: Type check tradingo
+        run: uv run mypy --config pyproject.toml ./src
+
+      - name: Install build
+        run: python -m pip install build
+      - name: Build a binary wheel and a source tarball
+        run: python -m build --sdist --outdir dist/
+      - name: Publish distribution to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
