@@ -1,0 +1,110 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tweek"
+version = "0.1.0"
+description = "Defense-in-depth security for AI coding assistants - protect credentials, code, and system from prompt injection attacks"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [
+    {name = "Tommy Mancino"}
+]
+keywords = ["claude", "security", "sandbox", "ai", "llm", "tweek", "claude-code", "prompt-injection", "mcp", "credential-theft"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+    "click>=8.0",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "keyring>=25.0",
+]
+
+[project.optional-dependencies]
+llm = [
+    "anthropic>=0.18.0",
+]
+linux = [
+    "secretstorage>=3.0",  # For GNOME Keyring / Secret Service on Linux
+]
+mcp = [
+    "mcp>=1.0.0",  # Model Context Protocol SDK for desktop app integration
+]
+proxy = [
+    "mitmproxy>=10.0",  # HTTPS interception proxy for universal LLM protection
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "ruff>=0.1.0",
+    "twine>=4.0",
+    "build>=1.0",
+]
+all = [
+    "tweek[llm,mcp,proxy]",  # Full installation with all features
+]
+
+[project.scripts]
+tweek = "tweek.cli:main"
+
+# Plugin entry points for discovery
+[project.entry-points."tweek.compliance"]
+gov = "tweek.plugins.compliance:GovCompliancePlugin"
+hipaa = "tweek.plugins.compliance:HIPAACompliancePlugin"
+pci = "tweek.plugins.compliance:PCICompliancePlugin"
+legal = "tweek.plugins.compliance:LegalCompliancePlugin"
+
+[project.entry-points."tweek.llm_providers"]
+anthropic = "tweek.plugins.providers:AnthropicProvider"
+openai = "tweek.plugins.providers:OpenAIProvider"
+google = "tweek.plugins.providers:GoogleProvider"
+bedrock = "tweek.plugins.providers:BedrockProvider"
+
+[project.entry-points."tweek.tool_detectors"]
+moltbot = "tweek.plugins.detectors:MoltbotDetector"
+cursor = "tweek.plugins.detectors:CursorDetector"
+continue = "tweek.plugins.detectors:ContinueDetector"
+
+[project.entry-points."tweek.screening"]
+rate_limiter = "tweek.plugins.screening:RateLimiterPlugin"
+pattern_matcher = "tweek.plugins.screening:PatternMatcherPlugin"
+llm_reviewer = "tweek.plugins.screening:LLMReviewerPlugin"
+session_analyzer = "tweek.plugins.screening:SessionAnalyzerPlugin"
+
+[project.urls]
+Homepage = "https://gettweek.com"
+Repository = "https://github.com/gettweek/tweek"
+Issues = "https://github.com/gettweek/tweek/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tweek*"]
+exclude = ["website*", "tests*", "scripts*", "test-environment*", "docs*"]
+
+[tool.setuptools.package-data]
+tweek = ["config/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=tweek --cov-report=term-missing"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "N", "W"]
