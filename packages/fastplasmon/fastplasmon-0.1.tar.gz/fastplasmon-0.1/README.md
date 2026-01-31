@@ -1,0 +1,163 @@
+<p align="center">
+  <img src="images/logo.svg" alt="logo" width="500">
+</p>
+<p align='center'>A Python toolkit for fast computation of near and far-field quantities for plasmonic nanoparticles in the quasistatic and weakly retarded regime.</p>
+
+<!-- <p align='center'>(Currently this is still a work in progress)</p> -->
+
+
+<div align="center">
+
+[![PyPI version](https://img.shields.io/pypi/v/fastplasmon.svg)](https://pypi.org/project/fastplasmon/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/fastplasmon)](https://pypi.org/project/fastplasmon/)
+[![License](https://img.shields.io/github/license/psssantos/fastplasmon)](https://github.com/psssantos/fastplasmon/blob/main/LICENSE)
+
+</div>
+
+<!-- * Source code: [https://github.com/psssantos/fastplasmon](https://github.com/psssantos/fastplasmon)   -->
+<!-- * Documentation: (coming soon) -->
+
+<!-- <p align="center">
+  <img src="images/logo.png" alt="logo" width="600">
+</p> -->
+
+
+
+## Overview
+
+**fastplasmon** is a Python library for ultrafast dipolar electrostatic modeling of plasmonic nanoparticles with arbitrary geometry.
+
+This method assumes that the surface charge density can be expanded as a series of multipole moments:
+
+$$
+\sigma(\mathbf{s}) =
+\sigma_{\text{monopole}}(\mathbf{s}) +
+\sigma_{\text{dipole}}(\mathbf{s}) +
+\sigma_{\text{quadrupole}}(\mathbf{s}) + \cdots
+$$
+
+
+and **retains only the dipole component**
+
+
+For strongly retarded regimes or higher-order multipolar effects, full-wave solvers (e.g., BEM, FEM, DDA) remain necessary.
+
+This package currently supports single plasmonic nanoparticles composed of a single material embedded in a homogeneous medium, allowing the calculation of:
+
+- LSPR spectra
+- Geometry-only extraction of dipolar Neumann–Poincaré (K) eigenvalues
+- Near-field mapping
+- Efficient refractive-index sensitivity and biosensing analysis
+
+
+## Citing fastplasmon
+If you use **fastplasmon** in your research, please cite the accompanying paper:
+
+P. S. S. dos Santos, J. P. Mendes, J. M. M. M. de Almeida,
+L. C. C. Coelho, "Ultrafast Dipolar Electrostatic Modeling of Plasmonic
+Nanoparticles with Arbitrary Geometry" (2026).
+
+https://doi.org/10.48550/arXiv.2601.16797
+
+
+
+## Core Features
+
+* Support for arbitrary triangulated nanoparticle meshes
+* Calculation of surface charge density
+* Geometry-only extraction of intrinsic dipolar eigenvalues  $\kappa_n \in (-1/2, 1/2)$
+* Polarizibility tensor extraction
+* Spectral response: Extinction, scattering, and absorption cross sections
+* Inclusion of Modified Long-Wavelength Approximation (MLWA) for weak retardation (ka<0.7)
+* Near-field evaluation: Field decay profiles for conformal dielectric coatings and effective refractive-index modeling for biosensing layers
+* Computation time scales with $O(N^2)$ for matrix assembly, however, runtime is nearly independent of the number of wavelengths
+
+
+## Algorithmic Highlights
+
+The key algorithmic ideas implemented in *fastplasmon* are:
+
+* **Dipole-subspace operator projection**  
+  The K operator is projected onto the basis $\{x(s), y(s), z(s)\}$, yielding a 3×3 generalized eigenproblem.
+
+* **Matrix-free K application**  
+  The K operator is applied directly to the dipole basis using Numba-accelerated kernels, avoiding dense matrix storage.
+
+* **Symmetrized reduced operators**  
+  Discrete self-adjointness is enforced at the reduced level, ensuring physically admissible eigenvalues.
+
+* **Separation of geometry and material response**  
+  All geometry-dependent quantities are computed once; material dispersion enters only through scalar expressions.
+
+
+
+## Installation
+
+From PyPI:
+
+```python
+pip install fastplasmon
+```
+From source:
+
+```python
+git clone https://github.com/INESCTEC/fastplasmon.git
+cd fastplasmon
+pip install -e .
+```
+
+## Basic Usage
+
+A minimal workflow:
+
+```python
+from fastplasmon import ArbitraryShapeDipolarSolver
+
+solver = ArbitraryShapeDipolarSolver(
+    vertices, faces,
+    epsilon=eps_metal,
+    medium_epsilon=eps_host
+)
+
+# Project K operator onto dipole subspace
+kappa, R_dip, a_dip, w_dip = solver.projectK_modes()
+
+# Compute polarizability and extinction
+Cext = solver.extinction(
+    wavelength,
+    eps_medium,
+    eps_metal
+)
+
+```
+
+## Authors
+
+
+Paulo S. S. dos Santos
+
+paulo.s.santos@inesctec.pt
+
+INESC TEC - Institute of Systems and Computer Engineering, Technology and Science. Porto, Portugal
+
+
+## License
+
+This project is licensed under the AGPLv3 license.
+
+
+<!-- Credits
+----------------------
+
+This package was created using Cookiecutter_ and the
+`audreyr/cookiecutter-pypackage`_ template.
+
+.. _Cookiecutter: https://github.com/audreyr/cookiecutter
+.. _`audreyr/cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage -->
+
+
+<!-- ## To do list
+
+- Documentation
+- Notebook examples
+- Reference paper DOI -->
