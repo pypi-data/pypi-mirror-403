@@ -1,0 +1,349 @@
+# Nalyst — Machine Learning, Statistics, Time Series, Survival, and Deep Learning in one toolkit
+
+Production-grade analytics with a single `train()` / `infer()` API spanning classical ML, statistical modeling, time series, survival analysis, and a PyTorch-style deep learning stack. Includes AutoML, explainability, diagnostics, and pipelines for lab-to-production workflows.
+
+**Navigation:** [Installation](#installation) · [Quick start](#quick-start) · [Deep learning](#deep-learning) · [AutoML](#automl-and-tuning) · [Time series](#time-series) · [Survival](#survival) · [Explainability](#explainability-and-diagnostics) · [Docs](#documentation) · [Contributing](#contributing)
+
+---
+
+## Overview
+
+Nalyst is a full-stack library for practitioners who need breadth (ML, stats, time series, survival) and depth (deep learning, AutoML, explainability) without switching APIs. It stays lightweight and production-minded while remaining friendly for rapid experimentation. No-nonsense defaults, clear validation, and consistent interfaces help you move from notebook to service quickly.
+
+## Highlights
+
+- One API for supervised, unsupervised, time series, and statistical modeling (including survival)
+- PyTorch-inspired `nn` module with autograd, optimizers, and 50+ layers
+- AutoML: search, tuning, evaluation, and imbalance handling built in
+- Robust preprocessing and pipelines: scalers, encoders, imputers, feature selection, column transforms
+- Explainability and diagnostics: feature importance, SHAP/LIME-style helpers, residual/variance checks
+- Broad examples: tabular ML, time series (ARIMA/VAR), survival analysis, and deep learning
+
+## Why Nalyst
+
+- Consistent: `train()` / `infer()` everywhere across ML, stats, time series, and DL
+- Comprehensive: learners, metrics, preprocessing, pipelines, AutoML, explainability, diagnostics
+- Production-first: minimal dependencies, explicit validation, and reproducible splits/search
+- Deep learning ready: tensors with autograd, layers, losses, and optimizers
+- Practical docs: runnable examples for ML, time series, survival, and deep learning
+
+## Installation
+
+**Stable (from PyPI once published):**
+
+```bash
+pip install nalyst
+```
+
+**With optional extras (visualization + dataframe support):**
+
+```bash
+pip install "nalyst[visualization,dataframes]"
+```
+
+**From source (development):**
+
+```bash
+git clone https://github.com/nalyst/nalyst.git
+cd nalyst
+python -m pip install --upgrade pip
+pip install -e .[dev,visualization,dataframes]
+```
+
+## Quick Start
+
+```python
+from nalyst import learners, evaluation, datasets
+
+# Sample data
+X, y = datasets.load_sample_classification()
+X_train, X_test, y_train, y_test = evaluation.train_test_split(X, y, test_ratio=0.2, seed=42)
+
+# Train a classifier
+model = learners.RandomForestLearner(n_estimators=200, max_depth=8, random_state=42)
+model.train(X_train, y_train)
+
+# Evaluate
+preds = model.infer(X_test)
+acc = evaluation.accuracy_score(y_test, preds)
+print(f"Accuracy: {acc:.4f}")
+```
+
+## AutoML and Tuning
+
+```python
+from nalyst import evaluation, learners
+from nalyst.evaluation import grid_search
+
+X, y = evaluation.make_classification(n_samples=2000, n_features=20, random_state=7)
+search_space = {
+    "n_estimators": [100, 200, 400],
+    "max_depth": [None, 8, 12],
+    "max_features": ["sqrt", "log2"],
+}
+
+base = learners.RandomForestLearner(random_state=7)
+best_params, best_score = grid_search(base, X, y, param_grid=search_space, scoring=evaluation.accuracy_score, cv=5)
+print("Best params", best_params)
+print("CV accuracy", best_score)
+```
+
+## Deep Learning
+
+```python
+from nalyst.nn import Module, layers, optim, losses
+from nalyst.data import DataLoader, TensorDataset
+
+class Classifier(Module):
+    def __init__(self, in_features, hidden, num_classes):
+        super().__init__()
+        self.net = layers.Sequential(
+            layers.Linear(in_features, hidden), layers.ReLU(),
+            layers.Linear(hidden, num_classes)
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+# Data loaders
+train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=64, shuffle=True)
+
+model = Classifier(in_features=X_train.shape[1], hidden=64, num_classes=len(set(y_train)))
+optimizer = optim.Adam(model.parameters(), lr=1e-3)
+criterion = losses.CrossEntropyLoss()
+
+for epoch in range(10):
+    for xb, yb in train_loader:
+        optimizer.zero_grad()
+        logits = model(xb)
+        loss = criterion(logits, yb)
+        loss.backward()
+        optimizer.step()
+```
+
+## Time Series
+
+```python
+from nalyst.timeseries import arima
+
+# Univariate series
+y = arima.demos.airpassengers()
+model = arima.ARIMA(order=(2, 1, 2))
+model.train(y)
+forecast = model.infer(steps=12)
+print(forecast)
+```
+
+## Survival
+
+```python
+from nalyst.survival import cox
+
+X, y_time, y_event = cox.demo_rossi()
+model = cox.CoxPH()
+model.train(X, y_time, y_event)
+hazards = model.infer(X[:5])
+print(hazards)
+```
+
+## Modules at a Glance
+
+- Learners: linear models, trees/ensembles, SVM, neighbors, Bayesian, gradient methods
+- Unsupervised: clustering (k-means, DBSCAN, hierarchical, GMM), manifold and dimensionality reduction
+- Preprocessing: scalers, encoders, imputers, feature selection, pipelines
+- Evaluation: metrics, cross-validation, hyperparameter search, experiment tracking helpers
+- Statistics: hypothesis testing, ANOVA, correlations, GLM, survival, time series (ARIMA/SARIMA/VAR)
+- Deep Learning: tensors with autograd, layers, optimizers, losses, and ready-made model templates
+- AutoML & Explainability: automated search, class balancing, feature importance, SHAP/LIME-style workflows
+
+## Deep Dive
+
+Nalyst is a full-stack, Python-first machine learning and statistical modeling toolkit that tries to balance three practical needs in applied data work: (1) shipping models quickly while keeping them reliable; (2) offering simple APIs while still exposing the controls needed for edge cases; and (3) covering the full lifecycle without forcing a rigid workflow. This section describes goals, architecture, capabilities, and practical guidance for teams using Nalyst across classification, regression, clustering, time series, survival analysis, and lightweight deep learning.
+
+Nalyst uses a unified train and infer API. Instead of many method names, you fit once, infer through a predictable call, and configure behavior with explicit parameters. The library includes automated model selection, explainability, and diagnostics, but keeps defaults steady and transparent. AutoML is there to get to a baseline quickly while keeping all the knobs visible.
+
+### Philosophy and Design Principles
+
+Nalyst is built on a few guiding principles. First, safe by default: common pitfalls such as data leakage, inconsistent preprocessing between train and inference, or silent dtype coercion are mitigated by design. Splitters respect temporal order, pipelines serialize preprocessing steps, and parameter validation is explicit. Second, progressive disclosure: beginners can start with defaults and a single call, while experts can override every stage—data checks, feature generation, model family, hyperparameter space, scoring, and post-hoc analysis. Third, observability: training runs emit structured summaries, metrics, and plots that can be exported or logged. Fourth, interoperability: components follow scikit-learn-style interfaces, allowing easy mixing with external estimators and transformers.
+
+### Core Modules and Capabilities
+
+#### Supervised Learning
+
+For classification and regression, Nalyst provides a set of model families spanning linear models, tree ensembles, gradient boosting, kernel methods, and lightweight neural networks. AutoML routines coordinate model selection using cross-validation and metric-driven ranking. Calibrated probabilities are available for classification; prediction intervals and residual analysis are available for regression. Feature preprocessing supports standard scaling, categorical encoding, missingness handling, and interaction generation. A fast baseline path performs cleaning, encoding, fits a baseline, and returns evaluation reports with minimal code.
+
+#### Unsupervised Learning
+
+Clustering (k-means variants, hierarchical, density-based) and manifold learning (t-SNE-like, UMAP-like when available, Isomap) are organized for quick dimensionality reduction and clustering workflows. Diagnostics include silhouette scores, cluster stability checks via resampling, and neighborhood preservation scores for manifold projections. Heuristics help select cluster counts and neighbor parameters, and plots guide human judgment for exploratory work.
+
+#### Time Series
+
+Nalyst handles univariate and multivariate forecasting. Classical methods include AR, MA, ARIMA and seasonal variants, exponential smoothing, and decomposition-based approaches when available. Regression-based forecasters auto-generate lags and rolling features, handle holiday and seasonality flags, and incorporate exogenous variables. Backtesting uses rolling or expanding windows with configurable horizons and gaps to prevent leakage. Evaluation reports provide horizon-wise metrics such as MAE, RMSE, and MAPE along with reliability diagnostics. For panel data, Nalyst can train global or series-specific models with pooling strategies to reduce overfitting. Exported models retain preprocessing for consistent inference.
+
+#### Survival Analysis
+
+Survival modeling includes Cox proportional hazards, accelerated failure time models, and nonparametric estimators such as Kaplan-Meier. The API surfaces hazard ratios, survival curves, and key metrics like concordance index and integrated Brier score. Data preprocessing assists with censoring flags, time-to-event calculations, and stratification. Diagnostic plots check proportional hazards assumptions, and bootstrapped confidence intervals are available for estimates. This module supports healthcare, churn framed as time-to-event, reliability engineering, and settings where censoring must be respected.
+
+#### Deep Learning Wrappers
+
+Nalyst offers thin wrappers around common deep learning patterns focused on tabular and sequence tasks where small to medium models are sufficient. Users can specify network depth, width, activation, dropout, and learning rate schedules. Checkpointing, early stopping, and lightweight logging are integrated. These wrappers let teams use neural nets within the same train and infer ergonomics as the rest of the library, without replacing specialized frameworks for large-scale vision or language tasks.
+
+#### Explainability and Diagnostics
+
+Explainability tools include permutation importance, partial dependence plots, ICE curves, and SHAP-like attributions when dependencies are installed. Diagnostics span calibration plots, residual distributions, lift curves, ROC/PR curves, confusion matrices, and reliability diagrams for classification. For regression, residual-versus-fitted plots, prediction interval coverage, and error stratification by feature are provided. For time series, forecast error heatmaps and horizon-wise calibration are available; for survival, proportional hazards checks and Schoenfeld residuals are exposed when applicable.
+
+### AutoML and Search Strategy
+
+Nalyst’s AutoML emphasizes robustness and transparency. Instead of brute-force model zoo exploration, it uses selected search spaces informed by data characteristics such as sample size, feature types, sparsity, categorical cardinality, and target distribution. Search strategies include randomized search and adaptive exploration depending on the space size. Users can cap runtime, configure parallelism, and pin to certain families (for example, tree-based only). Outputs include the best estimator, ranked leaderboard, cross-validation summaries, and stored preprocessing steps. The winning pipeline is exportable as a single object to ensure consistency between training and inference.
+
+### Data Handling and Validation
+
+Data ingestion assumes pandas DataFrames or NumPy arrays with optional schema declarations. Nalyst performs lightweight validation: detecting non-numeric columns, high-cardinality categoricals, missingness, constant or near-constant features, and simple drift checks between train and validation splits. Warnings are descriptive, offering suggested remediation such as target encoding for high-cardinality categoricals or adjusting lag windows for time series. For time series, frequency inference and datetime parsing are automatic but can be overridden.
+
+### Cross-Validation and Splitting
+
+Cross-validation is leak-aware. For i.i.d. tabular data, standard k-fold and stratified variants are available. For time series, rolling or expanding window splits respect temporal ordering and optional gap periods. Group-aware splits ensure entities do not bleed across train and validation folds. Survival tasks can use stratified splits on event and censor labels to maintain balance. Custom splitters can be provided, but defaults are chosen to reduce surprises and guard against leakage.
+
+### Metrics and Evaluation
+
+Nalyst ships with sensible metric defaults: accuracy, F1, ROC-AUC, PR-AUC for classification; MAE, MSE, RMSE, R2, and MAPE for regression; silhouette and adjusted Rand for clustering; concordance index and Brier score for survival; and horizon-wise MAE and MAPE for forecasting. The evaluation layer supports weighted metrics, custom scorers, and threshold-tuning utilities for classification to handle imbalance. Reports are human-readable and exportable to JSON or data frames for downstream tracking.
+
+### Pipelines and Serialization
+
+Pipelines encapsulate preprocessing, feature engineering, and the estimator. Serialization relies on joblib or cloudpickle with metadata to guard against version mismatches. A serialized pipeline keeps track of preprocessing steps, feature selectors, and the trained model. At inference, the pipeline enforces the same schema and transformation order, reducing drift risk. Nalyst warns about potential incompatibilities when the runtime environment differs from training.
+
+### Monitoring and Observability
+
+Nalyst provides hooks to log metrics, parameters, and artifacts. Lightweight experiment tracking can target the filesystem or external tools. Drift checks compare inference distributions to training baselines with basic tests such as Kolmogorov-Smirnov for continuous features or population stability index for categoricals. Alerting is minimal; emitted artifacts are ready for external monitoring stacks.
+
+### Typical Workflows
+
+#### Fast Baseline
+
+1. Load data into a DataFrame.
+2. Call a quick-train utility that handles cleaning, encoding, model search, and evaluation.
+3. Inspect the returned report (metrics, feature importance, errors).
+4. Export the pipeline for inference.
+
+This path is useful for rapid prototypes or as a benchmark for custom models.
+
+#### AutoML with Constraints
+
+1. Define the search space constraints (for example, exclude neural nets, limit depth for trees, restrict feature interactions).
+2. Choose metrics and cross-validation strategy.
+3. Run the AutoML routine with a time budget and desired parallelism.
+4. Retrieve the leaderboard, pick the top model, and examine diagnostics.
+5. Export the model and preprocessing together.
+
+This path balances speed and control, ensuring the search remains interpretable.
+
+#### Time Series Backtesting
+
+1. Prepare a time-indexed DataFrame with target and optional covariates.
+2. Configure lag and rolling feature generation or choose a classical ARIMA path.
+3. Set backtest parameters (window type, horizon, gap) to avoid lookahead.
+4. Run backtests to obtain horizon-wise errors and calibration checks.
+5. Fit the final model on the full history and export.
+
+This path emphasizes leakage-safe evaluation and horizon-aware diagnostics.
+
+#### Survival Modeling
+
+1. Provide durations and event indicators with optional covariates.
+2. Fit a Cox or accelerated failure time model, optionally stratified.
+3. Evaluate concordance and Brier scores, and examine proportional hazards diagnostics.
+4. Export survival curves and hazard ratios with confidence intervals.
+5. Serialize the fitted model for downstream inference.
+
+This path enforces correct handling of censoring and offers interpretable outputs.
+
+### Performance and Scalability
+
+Nalyst is optimized for small to medium datasets common in business and research contexts. Tree ensembles and gradient boosting are efficient for millions of rows depending on dimensionality. Neural wrappers are lightweight and intended for structured data rather than large-scale vision or NLP. Time series modules handle dozens to thousands of series via global models; very large panels may require subsetting or specialized tooling. Parallelism is exposed for search routines with care to avoid oversubscription. Memory use is constrained by caching policies, and most transformations stream over columns rather than materializing large intermediates.
+
+### Extensibility
+
+Because Nalyst aligns with scikit-learn interfaces, external transformers or estimators can plug in by implementing fit, transform, and predict. Custom feature generators, splitters, and scorers can be registered. For deep learning, custom PyTorch modules can be wrapped with provided adapters to reuse training loops, early stopping, and logging. This ensures domain-specific logic—text featurizers, graph embeddings, custom losses—can be introduced without abandoning the uniform API.
+
+### Testing and Reliability
+
+Nalyst includes unit and integration tests that focus on correctness (metrics, shapes, serialization) and safety (leakage prevention, validation). The design fails early when inputs are malformed, dtypes are unexpected, or time indexes are missing for forecasting. Where silent failures are common (for example, mishandled categoricals or unexpected NaNs), Nalyst emits actionable messages. For production, wrap pipelines with your own validation and monitoring, but the library reduces common footguns during development.
+
+### Documentation and Onboarding
+
+Documentation emphasizes task guides such as training classifiers, running AutoML for regression, forecasting panels of time series, fitting survival models, explaining models with permutation importance, and exporting pipelines. Guides start with minimal examples and then expose configuration options. API references are concise, noting defaults and expected value ranges. Examples are copy-pasteable and runnable with minimal setup to reduce friction between reading and doing.
+
+### Practical Tips
+
+1. Start with the simplest path: run a fast baseline to understand data quality and target difficulty before heavy tuning.
+2. For imbalanced classification, enable class weighting or focal-style losses where supported, and tune thresholds using PR-AUC.
+3. For high-cardinality categoricals, prefer target or hashing encoders and use proper cross-validation to avoid leakage.
+4. In time series, specify frequency and ensure no duplicate timestamps; use gap-aware backtesting to avoid lookahead.
+5. In survival tasks, verify proportional hazards assumptions; consider stratification or alternative models if violated.
+6. When exporting pipelines, pin versions and test inference on a held-out set serialized separately.
+7. Use permutation importance as a default explainability tool when model-specific attributions are unavailable or slow.
+
+### Production Integration
+
+Nalyst pipelines serialize cleanly but production often needs containerization, CI/CD, and monitoring. Use the exported pipeline inside a thin service layer (for example, FastAPI) to provide prediction endpoints. Include schema validation on incoming requests to catch discrepancies. For batch scoring, run pipelines in scheduled jobs and store metrics comparing inference distributions to training baselines to detect drift. Because preprocessing is bundled with the model, train and serve stay aligned.
+
+### Limitations and When to Use Something Else
+
+Nalyst is not optimized for massive deep learning, high-dimensional sparse text beyond moderate sizes, or specialized domains like large-scale vision and language models. For those, use domain-specific frameworks. AutoML is transparent and bounded; for large search spaces or neural architecture search, consider specialized tools. Time series support is strong for classical and feature-based methods but is not a replacement for full probabilistic programming frameworks when complex hierarchical models are needed. Survival analysis covers common estimators but may not include every niche model.
+
+### Example Walkthrough: Tabular Classification with AutoML
+
+Consider a churn dataset with mixed numeric and categorical features and a binary target.
+
+1. Load data into a DataFrame and set the target column.
+2. Invoke an AutoML classifier with a time budget and stratified cross-validation to preserve class balance.
+3. Allow search over tree ensembles, gradient boosting, and linear baselines; exclude heavier models if runtime is constrained.
+4. Inspect the leaderboard and choose the top model by ROC-AUC or PR-AUC.
+5. Retrieve calibration plots and feature importances; check residuals or error stratification by key segments.
+6. Serialize the pipeline, pin dependencies, and run inference on a holdout to validate end-to-end behavior.
+
+### Example Walkthrough: Time Series Forecasting
+
+For a univariate daily sales series with holidays and promotions as exogenous inputs:
+
+1. Parse the timestamp column, set it as an index, and specify frequency.
+2. Choose a feature-based regression forecaster; auto-generate lags and rolling means.
+3. Configure backtesting with an expanding window, a gap to prevent leakage, and a forecast horizon (for example, 14 days).
+4. Evaluate MAE and MAPE per horizon, inspect forecast error distributions, and adjust lag windows or model family if needed.
+5. Fit the final model on the full history, including exogenous variables, and export the pipeline.
+6. For deployment, keep the same feature-generation parameters to ensure consistent inference.
+
+### Example Walkthrough: Survival Analysis
+
+For patient time-to-readmission:
+
+1. Prepare durations (time until event or censoring) and an event indicator.
+2. Fit a Cox model with relevant covariates; consider stratification if proportional hazards are violated.
+3. Evaluate concordance and Brier scores via cross-validation; inspect Schoenfeld residuals for assumptions.
+4. Generate survival curves and hazard ratios; export for reporting.
+5. Serialize the model and verify inference on a small batch to ensure preprocessing matches.
+
+### Governance, Reproducibility, and Versioning
+
+Nalyst supports reproducibility by allowing seeds for randomness, deterministic splitters, and versioned pipeline exports. Record the Nalyst version, core dependencies, and system metadata when training. Store training data fingerprints to detect drift between training and deployment. Re-run key notebooks or scripts with pinned environments to ensure comparable outputs. Nalyst minimizes nondeterminism by exposing seeds and controlling parallelism where possible.
+
+### Future Directions
+
+Areas for expansion include richer probabilistic forecasting, broader hyperparameter search strategies, tighter integrations with experiment trackers, and expanded deep learning adapters for sequence modeling. Additional explainability features such as counterfactual examples and fairness diagnostics are under consideration. Survival analysis may grow to include more flexible parametric forms and competing risks. The plan is to keep behavior clear and guarded with sensible defaults.
+
+### Closing Perspective
+
+Nalyst helps practitioners move fast without giving up rigor. With consistent APIs, steady defaults, and transparent diagnostics, it lowers the barrier to solid modeling across tabular data, time series, and survival analysis while staying interoperable with the broader Python ecosystem. Whether you are an individual data scientist looking for faster baselines and diagnostics, or a team integrating models into production, Nalyst aims to be straightforward but configurable. The goal is to balance automation with control, clarity with flexibility, and breadth with depth you can maintain.
+
+## Documentation
+
+- Full guides: see `doc/` (user guides for supervised learning, statistics, deep learning, API reference)
+- Examples: runnable scripts under `examples/` covering ML, time series, imbalance handling, and deep learning
+
+## Contributing
+
+Contributions are welcome! See CONTRIBUTING.md for guidelines, coding standards, and local setup.
+
+## License
+
+MIT License. See LICENSE for details.
