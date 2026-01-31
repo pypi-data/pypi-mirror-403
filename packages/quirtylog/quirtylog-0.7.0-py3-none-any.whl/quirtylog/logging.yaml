@@ -1,0 +1,57 @@
+version: 1
+disable_existing_loggers: False
+formatters:
+  simple:
+    '()': 'coloredlogs.ColoredFormatter'
+    format: "%(levelname)s: %(asctime)s - <PID %(process)d:%(processName)s>: [%(name)s.%(funcName)s] %(message)s"
+    datefmt: '%Y-%m-%d %H:%M:%S'
+  error:
+    format: "%(levelname)s: %(asctime)s - <PID %(process)d:%(processName)s>: [%(name)s.%(funcName)s] %(message)s"
+    datefmt: '%Y-%m-%d %H:%M:%S'
+file_handler_anchor: &file_handler_anchor
+  class: logging.handlers.RotatingFileHandler
+  maxBytes: 5242880 # 5MB
+  backupCount: 20
+  encoding: utf8
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: DEBUG
+    formatter: simple
+    stream: ext://sys.stdout
+  info_file_handler:
+    <<: *file_handler_anchor
+    level: INFO
+    formatter: simple
+    filename: ${LOG_PATH}/info.log
+  error_file_handler:
+    <<: *file_handler_anchor
+    level: ERROR
+    formatter: error
+    filename: ${LOG_PATH}/errors.log
+  debug_file_handler:
+    <<: *file_handler_anchor
+    level: DEBUG
+    formatter: simple
+    filename: ${LOG_PATH}/debug.log
+  warn_file_handler:
+    <<: *file_handler_anchor
+    level: WARN
+    formatter: simple
+    filename: ${LOG_PATH}/warn.log
+
+loggers:
+  <module>:
+    level: INFO
+    handlers: [console, info_file_handler, error_file_handler, warn_file_handler]
+    propagate: no
+
+  <module.x>:
+    level: DEBUG
+    handlers: [info_file_handler, error_file_handler, debug_file_handler, warn_file_handler]
+    propagate: yes
+
+root:
+  level: DEBUG
+  handlers: [console, info_file_handler, error_file_handler, debug_file_handler, warn_file_handler]
