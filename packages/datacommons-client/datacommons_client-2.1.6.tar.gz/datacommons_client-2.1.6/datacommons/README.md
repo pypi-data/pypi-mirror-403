@@ -1,0 +1,1 @@
+**DEPRECATED: This library has been deprecated. Please migrate to the [datacommons_client](https://pypi.org/project/datacommons-client/) library. For help on translating your requests, see the [Migration guide](https://docs.datacommons.org/api/python/v2/migration.html).**
