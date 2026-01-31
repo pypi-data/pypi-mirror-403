@@ -1,0 +1,329 @@
+# JustEmbed
+
+**A semantic engine that just works.**
+
+Offline-first semantic search for everyday laptops.
+
+---
+
+## ⚠️ Alpha Release
+
+**This is v0.1.0a6 - Memory Efficiency Fix!**
+
+Fixed critical memory issues for large datasets (1000+ chunks). Now handles large-scale embedding without freezing or memory errors!
+
+---
+
+## What is JustEmbed?
+
+JustEmbed is an offline-first semantic search library designed for everyday laptops. No cloud. No API keys. No telemetry. Just embed your documents and search.
+
+### Philosophy
+
+- **One model only**: e5-small-int8 (English, 48x faster than baseline)
+- **Offline-first**: Zero network dependencies
+- **Just works**: No configuration, no choices, no surprises
+- **Hardware-aware**: Automatic limits based on your laptop
+- **Privacy-first**: Everything stays on your machine
+- **Optimized**: INT8 quantization + graph optimizations + multi-threading
+
+---
+
+## Quick Start
+
+```python
+import justembed as je
+
+# Load documents from a folder
+result = je.load("./documents")
+print(f"Found {result['files_total']} files")
+
+# Generate embeddings (first time only)
+if not result['indexed']:
+    stats = je.embed()
+    print(f"Embedded {stats['files_embedded']} files in {stats['time_taken']:.2f}s")
+
+# Search semantically
+results = je.search("fruits that are red in color")
+for r in results:
+    print(f"Score: {r['score']:.3f} | {r['file']}")
+    print(f"  {r['text'][:100]}...")
+
+# Check status
+status = je.status()
+print(f"Loaded: {status['loaded']}")
+print(f"Chunks: {status['chunks_used']}/{status['chunks_limit']}")
+
+# Clear query cache
+je.clear_cache()
+
+# Unload when done
+je.unload()
+```
+
+### Core Features
+
+- ✅ Single model (e5-small-int8.onnx - English, INT8 quantized)
+- ✅ 48x faster than baseline (v0.1.0a3)
+- ✅ 3x smaller package (22MB vs 76MB)
+- ✅ Offline-first (zero network dependencies)
+- ✅ Python 3.8+ support
+- ✅ Polars-based storage (Parquet files)
+- ✅ Hardware-aware limits (automatic chunk limits)
+- ✅ Query caching for fast repeated searches
+- ✅ Simple API (5 functions + 2 utilities)
+- ✅ Comprehensive error handling
+- ✅ Detailed timing logs for benchmarking
+
+---
+
+## Installation
+
+```bash
+pip install justembed
+```
+
+**Current version: v0.1.0a6** - Memory efficiency fix for large datasets!
+
+---
+
+## API Reference
+
+### Main Functions
+
+#### `load(path: str) -> dict`
+Load documents from a folder or file.
+
+```python
+result = je.load("./documents")
+# Returns: {"status": "loaded"|"not_indexed", "files_total": int, "indexed": bool}
+```
+
+#### `embed() -> dict`
+Generate embeddings for loaded documents.
+
+```python
+stats = je.embed()
+# Returns: {"files_embedded": int, "chunks_created": int, 
+#           "time_taken": float, "model_load_time": float, "total_time": float}
+```
+
+#### `search(query: str, top_k: int = 5) -> list`
+Search indexed documents semantically.
+
+```python
+results = je.search("red fruits", top_k=10)
+# Returns: [{"score": float, "file": str, "text": str}, ...]
+```
+
+#### `status() -> dict`
+Get current index status.
+
+```python
+status = je.status()
+# Returns: {"loaded": bool, "path": str, "files_indexed": int, 
+#           "chunks_used": int, "chunks_limit": int, "query_cache_size": int}
+```
+
+#### `unload() -> None`
+Unload current index and clear memory.
+
+```python
+je.unload()
+```
+
+### Utility Functions
+
+#### `clear_cache() -> None`
+Clear query cache to free disk space.
+
+```python
+je.clear_cache()
+```
+
+#### `set_verbose(verbose: bool) -> None`
+Enable or disable verbose logging.
+
+```python
+je.set_verbose(False)  # Disable logging
+je.set_verbose(True)   # Re-enable logging
+```
+
+### Exception Classes
+
+- `JustEmbedError` - Base exception
+- `NotLoadedError` - No folder loaded
+- `InvalidInputError` - Invalid path or input
+- `ChunkLimitError` - Too many chunks for system
+- `TimeoutError` - Operation exceeded time limit
+
+---
+
+## Requirements
+
+- Python 3.8+
+- ~25MB disk space (INT8 model + dependencies)
+- 4GB+ RAM recommended
+- Multi-core CPU recommended for best performance
+
+---
+
+## Dependencies
+
+- `onnxruntime` - ONNX inference with optimizations
+- `tokenizers` - Tokenization (standalone, not transformers!)
+- `numpy` - Array operations
+- `polars` - DataFrame operations
+- `pyarrow` - Parquet I/O
+- `psutil` - Hardware detection
+- `tqdm` - Progress bars
+
+**No pandas. No transformers. No network dependencies.**
+
+---
+
+## Roadmap
+
+### v0.1.0a1 (December 2025) - Name Reservation
+- ✅ Package name locked on PyPI
+- ✅ Basic structure
+- ✅ Placeholder functions
+
+### v0.1.0a2 (January 2026) - Working Implementation
+- ✅ Full implementation complete
+- ✅ All core functions working
+- ✅ Property-based tests
+- ✅ Hardware-aware limits
+- ✅ Query caching
+- ✅ Comprehensive error handling
+
+### v0.1.0a3 (January 2026) - Logging Improvements
+- ✅ Transparent logging system
+- ✅ Separate model loading time from work time
+- ✅ New API: `set_verbose(True/False)`
+- ✅ Enhanced return values with timing details
+- ✅ Better UX for Jupyter users
+
+### v0.1.0a4 (January 2026) - Performance Breakthrough
+- ✅ Graph optimizations (ONNX Runtime)
+- ✅ Multi-threading support
+- ✅ Progress bars (tqdm)
+- ✅ 26.6x faster than v0.1.0a3
+
+### v0.1.0a5 (January 2026) - INT8 Quantization
+- ✅ INT8 quantized model (4x smaller)
+- ✅ 48x faster than v0.1.0a3
+- ✅ 3x smaller package (22MB vs 76MB)
+- ✅ Removed time limits for large-scale testing
+- ✅ Enhanced logging for benchmarking
+
+### v0.1.0a6 (January 2026) - Memory Efficiency Fix
+- ✅ Fixed memory allocation issues for large datasets (1000+ chunks)
+- ✅ Generator-based batched processing for memory efficiency
+- ✅ No performance regression (same 48x speedup)
+- ✅ Handles large-scale embedding without freezing
+- ✅ Reduced peak memory usage for large datasets
+
+### v0.1.0 (February 2026) - First Stable Release
+- ⏳ Production testing on various hardware
+- ⏳ Performance optimization
+- ⏳ Complete documentation
+- ⏳ Example projects
+
+### v0.2.0 (Future)
+- ⏳ Proper tokenizer integration
+- ⏳ Multilingual model support (100+ languages)
+- ⏳ Advanced search filters
+- ⏳ Batch operations API
+- ⏳ Progress callbacks
+
+---
+
+## Why "JustEmbed"?
+
+Because that's all you need to do:
+
+1. **Just embed** your documents
+2. **Just search** with natural language
+3. **Just works** - no configuration needed
+
+---
+
+## Design Decisions
+
+### One Model Only
+We use **e5-small-int8.onnx** (384 dimensions, English, INT8 quantized). Fast, efficient, and fits PyPI's 100MB limit. 48x faster than baseline! Multilingual support coming in v0.2.0.
+
+### INT8 Quantization
+Converted from FP32 to INT8 for 4x smaller size and 1.8x faster inference with <1% accuracy loss. Combined with graph optimizations and multi-threading for 48x total speedup.
+
+### Offline-First
+Zero network dependencies. Everything runs locally. No telemetry. No surprises.
+
+### Hardware-Aware
+Automatic limits based on your laptop's capabilities. No hard time limits - let it run as long as needed for large datasets. Detailed timing logs help you benchmark performance.
+
+### Polars, Not Pandas
+We use Polars for speed and efficiency. No pandas dependency.
+
+### Tokenizers, Not Transformers
+We use the standalone `tokenizers` library (3MB) instead of `transformers` (40MB). 93% smaller!
+
+---
+
+## Target Users
+
+- Non-ML engineers learning AI for the first time
+- Business users in paranoid/restricted environments
+- Developers who need offline semantic search
+- Anyone who wants a safe sandbox to experiment
+
+---
+
+## License
+
+MIT License - see LICENSE file for details.
+
+---
+
+## Author
+
+Krishnamoorthy Sankaran
+
+---
+
+## Links
+
+- **GitHub**: https://github.com/sekarkrishna/justembed
+- **PyPI**: https://pypi.org/project/justembed/
+- **Issues**: https://github.com/sekarkrishna/justembed/issues
+
+---
+
+## Status
+
+✅ **Core Functionality Complete!** ✅
+
+v0.1.0a6 includes:
+- ✅ Document loading and scanning
+- ✅ Embedding generation with ONNX (INT8 quantized)
+- ✅ 48x faster than v0.1.0a3 baseline
+- ✅ 3x smaller package size (22MB vs 76MB)
+- ✅ Memory-efficient processing for large datasets (1000+ chunks)
+- ✅ Semantic search with cosine similarity
+- ✅ Query caching for performance
+- ✅ Status monitoring and management
+- ✅ Hardware-aware resource limits
+- ✅ Comprehensive error handling
+- ✅ Property-based testing
+- ✅ Transparent logging with detailed timing
+- ✅ Separate model loading time tracking
+- ✅ Verbose mode control
+- ✅ Progress bars for long operations
+- ✅ No time limits for large-scale testing
+
+Ready for production testing on various hardware! Full v0.1.0 release coming soon.
+
+---
+
+**JustEmbed - A semantic engine that just works.**
