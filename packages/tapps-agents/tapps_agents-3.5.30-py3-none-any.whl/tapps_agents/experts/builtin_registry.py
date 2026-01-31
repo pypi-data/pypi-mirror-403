@@ -1,0 +1,261 @@
+"""
+Built-in Expert Registry
+
+Manages framework-controlled, immutable experts that ship with the TappsCodingAgents package.
+These experts provide technical domain knowledge (security, performance, testing, etc.)
+and cannot be modified by customers. They complement customer-defined business domain experts.
+
+2025 Architecture Pattern:
+- Built-in experts: Framework-controlled, immutable, technical domains
+- Customer experts: User-controlled, configurable, business domains
+- Dual-layer consultation: Weighted aggregation with priority system
+"""
+
+from pathlib import Path
+
+from .expert_config import ExpertConfigModel
+
+
+class BuiltinExpertRegistry:
+    """
+    Registry for built-in framework experts.
+
+    Built-in experts are:
+    - Immutable (cannot be modified by customers)
+    - Framework-controlled (updated via framework releases)
+    - Technical domain focused (security, performance, testing, etc.)
+    - Auto-loaded by ExpertRegistry
+    """
+
+    # Technical domains where built-in experts have primary authority
+    # Note: Domain names are mapped to knowledge directory names via sanitize_domain_for_path()
+    # (e.g., "performance-optimization" -> "performance/", "testing-strategies" -> "testing/")
+    TECHNICAL_DOMAINS: set[str] = {
+        "security",
+        "performance-optimization",  # Maps to "performance/" via domain_utils
+        "testing-strategies",  # Maps to "testing/" via domain_utils
+        "code-quality-analysis",
+        "software-architecture",
+        "development-workflow",
+        "data-privacy-compliance",
+        "accessibility",
+        "user-experience",
+        "documentation-knowledge-management",
+        "ai-frameworks",  # Maps to "ai-frameworks/" (no change needed)
+        "agent-learning",  # Agent Learning Best Practices
+        # Phase 5: High Priority Experts
+        "observability-monitoring",
+        "api-design-integration",
+        "cloud-infrastructure",
+        "database-data-management",
+    }
+
+    # Built-in expert configurations
+    # These will be expanded in phases
+    BUILTIN_EXPERTS: list[ExpertConfigModel] = [
+        # Phase 1: Security Expert
+        ExpertConfigModel(
+            expert_id="expert-security",
+            expert_name="Security Expert",
+            primary_domain="security",
+            rag_enabled=True,
+            fine_tuned=False,
+        ),
+        # Phase 2: Performance Expert
+        ExpertConfigModel(
+            expert_id="expert-performance",
+            expert_name="Performance Expert",
+            primary_domain="performance-optimization",
+            rag_enabled=True,
+            fine_tuned=False,
+        ),
+        # Phase 2: Testing Expert
+        ExpertConfigModel(
+            expert_id="expert-testing",
+            expert_name="Testing Expert",
+            primary_domain="testing-strategies",
+            rag_enabled=True,
+            fine_tuned=False,
+        ),
+        # Phase 3: Data Privacy Expert
+        ExpertConfigModel(
+            expert_id="expert-data-privacy",
+            expert_name="Data Privacy & Compliance Expert",
+            primary_domain="data-privacy-compliance",
+            rag_enabled=True,
+            fine_tuned=False,
+        ),
+        # Phase 4: Accessibility Expert
+        ExpertConfigModel(
+            expert_id="expert-accessibility",
+            expert_name="Accessibility Expert",
+            primary_domain="accessibility",
+            rag_enabled=True,
+            fine_tuned=False,
+        ),
+        # Phase 4: User Experience Expert
+        ExpertConfigModel(
+            expert_id="expert-user-experience",
+            expert_name="User Experience Expert",
+            primary_domain="user-experience",
+            rag_enabled=True,
+            fine_tuned=False,
+        ),
+        # Existing framework experts (already in use)
+        ExpertConfigModel(
+            expert_id="expert-ai-frameworks",
+            expert_name="AI Agent Framework Expert",
+            primary_domain="ai-frameworks",  # Matches knowledge directory "ai-frameworks/"
+            rag_enabled=True,
+            fine_tuned=False,
+        ),
+        ExpertConfigModel(
+            expert_id="expert-code-quality",
+            expert_name="Code Quality & Analysis Expert",
+            primary_domain="code-quality-analysis",
+            rag_enabled=True,
+            fine_tuned=False,
+        ),
+        ExpertConfigModel(
+            expert_id="expert-software-architecture",
+            expert_name="Software Architecture Expert",
+            primary_domain="software-architecture",
+            rag_enabled=True,
+            fine_tuned=False,
+        ),
+        ExpertConfigModel(
+            expert_id="expert-devops",
+            expert_name="Development Workflow Expert",
+            primary_domain="development-workflow",
+            rag_enabled=True,
+            fine_tuned=False,
+        ),
+        ExpertConfigModel(
+            expert_id="expert-documentation",
+            expert_name="Documentation & Knowledge Management Expert",
+            primary_domain="documentation-knowledge-management",
+            rag_enabled=True,
+            fine_tuned=False,
+        ),
+        # Phase 5: Observability & Monitoring Expert
+        ExpertConfigModel(
+            expert_id="expert-observability",
+            expert_name="Observability & Monitoring Expert",
+            primary_domain="observability-monitoring",
+            rag_enabled=True,
+            fine_tuned=False,
+        ),
+        # Phase 5: API Design & Integration Expert
+        ExpertConfigModel(
+            expert_id="expert-api-design",
+            expert_name="API Design & Integration Expert",
+            primary_domain="api-design-integration",
+            rag_enabled=True,
+            fine_tuned=False,
+        ),
+        # Phase 5: Cloud & Infrastructure Expert
+        ExpertConfigModel(
+            expert_id="expert-cloud-infrastructure",
+            expert_name="Cloud & Infrastructure Expert",
+            primary_domain="cloud-infrastructure",
+            rag_enabled=True,
+            fine_tuned=False,
+        ),
+        # Phase 5: Database & Data Management Expert
+        ExpertConfigModel(
+            expert_id="expert-database",
+            expert_name="Database & Data Management Expert",
+            primary_domain="database-data-management",
+            rag_enabled=True,
+            fine_tuned=False,
+        ),
+        # Agent Learning Best Practices Expert
+        ExpertConfigModel(
+            expert_id="expert-agent-learning",
+            expert_name="Agent Learning Best Practices Expert",
+            primary_domain="agent-learning",
+            rag_enabled=True,
+            fine_tuned=False,
+        ),
+    ]
+
+    @classmethod
+    def get_builtin_experts(cls) -> list[ExpertConfigModel]:
+        """
+        Get all built-in expert configurations.
+
+        Returns:
+            List of ExpertConfigModel instances for built-in experts
+        """
+        return cls.BUILTIN_EXPERTS.copy()
+
+    @classmethod
+    def get_builtin_expert_ids(cls) -> list[str]:
+        """
+        Get list of all built-in expert IDs.
+
+        Returns:
+            List of expert IDs
+        """
+        return [expert.expert_id for expert in cls.BUILTIN_EXPERTS]
+
+    @classmethod
+    def is_builtin_expert(cls, expert_id: str) -> bool:
+        """
+        Check if an expert ID is a built-in expert.
+
+        Args:
+            expert_id: Expert ID to check
+
+        Returns:
+            True if built-in expert, False otherwise
+        """
+        return expert_id in cls.get_builtin_expert_ids()
+
+    @classmethod
+    def get_builtin_knowledge_path(cls) -> Path:
+        """
+        Get path to built-in knowledge bases directory.
+
+        Returns:
+            Path to knowledge/ directory in package
+        """
+        # Fallback: Use __file__ to find package path
+        try:
+            import tapps_agents.experts
+
+            package_path = Path(tapps_agents.experts.__file__).parent
+            knowledge_path = package_path / "knowledge"
+            return knowledge_path
+        except Exception:
+            # Final fallback: relative path
+            return Path(__file__).parent / "knowledge"
+
+    @classmethod
+    def is_technical_domain(cls, domain: str) -> bool:
+        """
+        Check if a domain is a technical domain (built-in expert authority).
+
+        Args:
+            domain: Domain name to check
+
+        Returns:
+            True if technical domain, False if business domain
+        """
+        return domain in cls.TECHNICAL_DOMAINS
+
+    @classmethod
+    def get_expert_for_domain(cls, domain: str) -> ExpertConfigModel | None:
+        """
+        Get built-in expert configuration for a domain.
+
+        Args:
+            domain: Domain name
+
+        Returns:
+            ExpertConfigModel if found, None otherwise
+        """
+        for expert in cls.BUILTIN_EXPERTS:
+            if expert.primary_domain == domain:
+                return expert
+        return None
