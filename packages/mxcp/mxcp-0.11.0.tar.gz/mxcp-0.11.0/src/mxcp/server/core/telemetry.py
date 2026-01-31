@@ -1,0 +1,289 @@
+"""Server-side telemetry configuration and initialization.
+
+This module configures OpenTelemetry based on user config settings,
+using the SDK telemetry module for the actual implementation.
+"""
+
+import logging
+import os
+from typing import Any
+
+from mxcp.sdk.core import PACKAGE_NAME, PACKAGE_VERSION
+from mxcp.sdk.telemetry import (
+    TelemetryConfigModel,
+    configure_all,
+    get_current_trace_id,
+    shutdown_telemetry,
+)
+from mxcp.server.core.config.models import (
+    UserConfigModel,
+    UserTelemetryConfigModel,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def configure_telemetry_from_config(
+    user_config: UserConfigModel,
+    project: str,
+    profile: str,
+) -> bool:
+    """Configure telemetry based on user config settings.
+
+    This reads telemetry configuration from the user config at the profile level
+    and initializes OpenTelemetry accordingly.
+
+    Args:
+        user_config: The loaded user configuration
+        project: The current project name
+        profile: The current profile name
+
+    Returns:
+        Whether telemetry is enabled
+    """
+    # Get telemetry config for the current profile
+    telemetry_config = _get_telemetry_config(user_config, project, profile)
+
+    if not telemetry_config:
+        logger.debug(f"No telemetry configuration found for {project}/{profile}")
+        # Disable all telemetry
+        configure_all(enabled=False)
+        return False
+
+    data = telemetry_config.model_dump(mode="python", exclude_none=True)
+    config_dict: dict[str, Any] = {
+        "enabled": data.get("enabled", False),
+        "endpoint": data.get("endpoint"),
+        "headers": data.get("headers"),
+        "service_name": data.get("service_name", PACKAGE_NAME),
+        "service_version": data.get("service_version", PACKAGE_VERSION),
+        "environment": data.get("environment", profile),
+        "resource_attributes": {
+            "mxcp.project": project,
+            "mxcp.profile": profile,
+            **(data.get("resource_attributes") or {}),
+        },
+    }
+
+    if tracing := data.get("tracing"):
+        config_dict["tracing"] = tracing
+    if metrics := data.get("metrics"):
+        config_dict["metrics"] = metrics
+
+    # Create config object
+    config = TelemetryConfigModel.model_validate(config_dict)
+
+    # Log configuration details
+    logger.info(
+        f"Configuring telemetry for {project}/{profile} "
+        f"(enabled={config.enabled}, endpoint={config.endpoint})"
+    )
+
+    if config.enabled:
+        logger.info(
+            f"  Tracing: {'enabled' if config.tracing.enabled else 'disabled'}"
+            f"{' (console export)' if config.tracing.console_export else ''}"
+        )
+        logger.info(
+            f"  Metrics: {'enabled' if config.metrics.enabled else 'disabled'}"
+            f" (interval={config.metrics.export_interval}s)"
+        )
+
+    # Configure all telemetry signals
+    configure_all(config)
+
+    # Return whether telemetry is actually enabled
+    return config.enabled
+
+
+def _parse_resource_attributes(value: str) -> dict[str, str]:
+    """Parse OTEL_RESOURCE_ATTRIBUTES format.
+
+    Format: key1=value1,key2=value2
+
+    Args:
+        value: Comma-separated key=value pairs
+
+    Returns:
+        Dictionary of attributes
+    """
+    attrs = {}
+    for pair in value.split(","):
+        if "=" in pair:
+            key, val = pair.split("=", 1)
+            attrs[key.strip()] = val.strip()
+    return attrs
+
+
+def _parse_headers(value: str) -> dict[str, str]:
+    """Parse OTEL_EXPORTER_OTLP_HEADERS format.
+
+    Format: key1=value1,key2=value2
+
+    Args:
+        value: Comma-separated key=value pairs
+
+    Returns:
+        Dictionary of headers
+    """
+    headers = {}
+    for pair in value.split(","):
+        if "=" in pair:
+            key, val = pair.split("=", 1)
+            headers[key.strip()] = val.strip()
+    return headers
+
+
+def _get_telemetry_from_env() -> dict[str, Any] | None:
+    """Get telemetry configuration from environment variables.
+
+    Reads standard OpenTelemetry environment variables and MXCP-specific ones.
+
+    Standard OTEL variables:
+        - OTEL_EXPORTER_OTLP_ENDPOINT
+        - OTEL_EXPORTER_OTLP_HEADERS
+        - OTEL_SERVICE_NAME
+        - OTEL_RESOURCE_ATTRIBUTES
+
+    MXCP-specific variables:
+        - MXCP_TELEMETRY_ENABLED
+        - MXCP_TELEMETRY_TRACING_CONSOLE
+        - MXCP_TELEMETRY_METRICS_INTERVAL
+
+    Returns:
+        Telemetry config dict or None if no env vars are set
+    """
+    config: dict[str, Any] = {}
+
+    # Check if telemetry is explicitly enabled
+    enabled = os.getenv("MXCP_TELEMETRY_ENABLED", "").lower()
+    if enabled in ("true", "1", "yes"):
+        config["enabled"] = True
+    elif enabled in ("false", "0", "no"):
+        config["enabled"] = False
+
+    # Standard OTEL variables
+    if endpoint := os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        config["endpoint"] = endpoint
+
+    if headers_str := os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
+        config["headers"] = _parse_headers(headers_str)
+
+    if service_name := os.getenv("OTEL_SERVICE_NAME"):
+        config["service_name"] = service_name
+
+    if resource_attrs_str := os.getenv("OTEL_RESOURCE_ATTRIBUTES"):
+        config["resource_attributes"] = _parse_resource_attributes(resource_attrs_str)
+
+    # MXCP-specific tracing config
+    tracing_config: dict[str, Any] = {}
+    console_export = os.getenv("MXCP_TELEMETRY_TRACING_CONSOLE", "").lower()
+    if console_export in ("true", "1", "yes"):
+        tracing_config["console_export"] = True
+    elif console_export in ("false", "0", "no"):
+        tracing_config["console_export"] = False
+
+    if tracing_config:
+        config["tracing"] = tracing_config
+
+    # MXCP-specific metrics config
+    metrics_config: dict[str, Any] = {}
+    if interval_str := os.getenv("MXCP_TELEMETRY_METRICS_INTERVAL"):
+        try:
+            metrics_config["export_interval"] = int(interval_str)
+        except ValueError:
+            logger.warning(
+                f"Invalid MXCP_TELEMETRY_METRICS_INTERVAL value: {interval_str}, ignoring"
+            )
+
+    if metrics_config:
+        config["metrics"] = metrics_config
+
+    # Return None if no configuration was found
+    return config if config else None
+
+
+def _merge_telemetry_configs(
+    file_config: UserTelemetryConfigModel | None, env_config: dict[str, Any] | None
+) -> UserTelemetryConfigModel | None:
+    """Merge telemetry configuration from file and environment.
+
+    Environment variables take precedence over file configuration.
+
+    Args:
+        file_config: Configuration from user config file
+        env_config: Configuration from environment variables
+
+    Returns:
+        Merged configuration or None if both are empty
+    """
+    if not file_config and not env_config:
+        return None
+
+    merged: dict[str, Any] = (
+        file_config.model_dump(mode="python", exclude_none=True) if file_config else {}
+    )
+
+    # Apply env overrides
+    if env_config:
+        for key, value in env_config.items():
+            if key in ("tracing", "metrics"):
+                # Merge nested configs
+                if key not in merged:
+                    merged[key] = {}
+                merged[key].update(value)
+            else:
+                # Override top-level keys
+                merged[key] = value
+
+    if not merged:
+        return None
+
+    return UserTelemetryConfigModel.model_validate(merged)
+
+
+def _get_telemetry_config(
+    user_config: UserConfigModel, project: str, profile: str
+) -> UserTelemetryConfigModel | None:
+    """Get telemetry configuration for a specific profile.
+
+    Merges configuration from user config file and environment variables,
+    with environment variables taking precedence.
+
+    Args:
+        user_config: The loaded user configuration
+        project: The current project name
+        profile: The current profile name
+
+    Returns:
+        Telemetry configuration dict or None if not found
+    """
+    # Get config from file
+    project_config = user_config.projects.get(project)
+    profile_config = project_config.profiles.get(profile) if project_config else None
+    file_config = profile_config.telemetry if profile_config else None
+
+    # Get config from environment
+    env_config = _get_telemetry_from_env()
+
+    # Merge with env taking precedence
+    return _merge_telemetry_configs(file_config, env_config)
+
+
+def get_trace_context() -> str | None:
+    """Get current trace context for correlation with audit logs.
+
+    This is a convenience wrapper around the SDK function.
+
+    Returns:
+        Trace ID as hex string or None
+    """
+    return get_current_trace_id()
+
+
+# Re-export shutdown for clean server shutdown
+__all__ = [
+    "configure_telemetry_from_config",
+    "get_trace_context",
+    "shutdown_telemetry",
+]
