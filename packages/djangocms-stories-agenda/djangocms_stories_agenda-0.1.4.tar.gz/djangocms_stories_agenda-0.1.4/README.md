@@ -1,0 +1,150 @@
+<div align="center">
+  <img src="logo.png" alt="djangocms-stories-agenda logo" />
+</div>
+
+Add an Agenda to your blog that displays upcoming events!
+
+*Easy! ~~Cheap~~Free! Not seen on TV!*
+
+> *Still using djangocms-blog? Check out* [djangocms-blog-agenda](https://gitlab.com/kapt/open-source/djangocms-blog-agenda) *instead!*
+
+<div align="center">
+  <img src="https://gitlab.com/-/project/76227599/uploads/0ccff304bd7ad37ebbf3b716c8a589e9/image.png" alt="djangocms-stories-agenda screenshot" />
+</div>
+
+----
+
+## Install
+
+* Install the package
+    ```bash
+    python3 -m pip install djangocms-stories-agenda
+    ```
+
+* Add it in your `INSTALLED_APPS`:
+    ```python
+    "djangocms_stories_agenda",
+    "recurrence",
+    ```
+
+* Run the migration:
+    ```sh
+    python3 manage.py migrate djangocms_stories_agenda
+    ```
+
+* Update the `djangocms-stories` urls by the ones in this module, by using this lovely [setting](https://djangocms-stories.readthedocs.io/en/latest/features/urlconf.html):
+    ```py
+    STORIES_URLCONF = "djangocms_stories_agenda.patched_urls"
+    ```
+
+* Create a new blog configuration.
+  * Instance namespace: *put what you want*.
+  * Application title: *put what you want*.
+  * Object name: *put what you want*.
+  * [...]
+  * <b>Click on <kbd>Layout (Show)</kbd></b>:
+    * [...]
+    * **Template prefix**: `djangocms_stories_agenda`.
+    > That's ***very*** important since this application will check this value multiple times (to update the queryset, to check the templates, to add the post extension "event date" only to the Agenda app...).
+  * Save this config.
+
+* ![that's all folks!](https://gitlab.com/-/project/76227599/uploads/d5ae0f217bb16239606b6cabffe82d8e/image.png)
+
+----
+
+## Explanations/Views/Misc
+
+* A new `Event date` DateTime field has been added to blog posts that have the template prefix set to `djangocms_stories_agenda`.
+* A new post list view was created for the Agenda view, it includes all the posts where the `event_date` is set to a date in the future.
+* Another view is available at `_("/past/")`, that will display each post where the `event_date` is in the past.
+* The templates are *not* in `djangocms_stories/templates` anymore, but in `djangocms_stories_agenda/templates`. Something's not appearing on your templates? Try to edit the file in `djangocms_stories_agenda/templates/`!
+* We removed the mention of comments & liveblog in the admin form, because we're not using this.
+* We use some very special bits of code that are using some internal features of djangocms-stories (see `misc.py`, and `apps.py`). Try the module before pushing an update.
+
+----
+
+## Config
+
+### Settings
+
+#### `DJANGOCMS_STORIES_AGENDA_HIDE_UPCOMING_EVENTS_AFTER_CHOICES`
+a tuple of choices describing when `AgendaUpcomingEntriesPlugin` will hide events.
+
+Default choices are:
+```py
+(
+    ("start", _("just after event start date")),
+    ("start+1h", _("1 hour after event start date")),
+    ("start+4h", _("4 hours after event start date")),
+    ("start+1d", _("1 day after event start date")),
+    ("start+2d", _("2 days after event start date")),
+    ("start+3d", _("3 days after event start date")),
+    ("start+7d", _("7 days after event start date")),
+    ("end", _("just after event end date")),
+)
+```
+
+#### `DJANGOCMS_STORIES_AGENDA_RECURRENCE_IS_ENABLED`
+
+Wether to enable recurrence for events.
+
+#### `DJANGOCMS_STORIES_AGENDA_RECURRENCE_MAX_DAYS_SEARCH`
+
+Number of days (int) to limit the search of recurring events. Defaults to `365`.
+
+#### `DJANGOCMS_STORIES_AGENDA_TEMPLATE_PREFIXES`
+
+You may need to add multiple agenda blogs with different template prefixes, in order to have different html content or styles for each agenda.
+
+Add this list in your settings so that djangocms-stories-agenda will work (display start_date & end_date in add/update views of the articles):
+
+```py
+DJANGOCMS_STORIES_AGENDA_TEMPLATE_PREFIXES = [
+    "djangocms_stories_upcoming_calendar",
+    "other_djangocms_stories_template_prefix",
+    "...",
+]
+```
+
+> *The default template prefix (`djangocms_stories_agenda`) will still be recognized even if you had this setting, you don't need to add it in the list.*
+
+### Multisite
+
+This modules handles multisite just fine; just add `BLOG_MULTISITE = True` in your settings, and our module will inject the `get_site` function directly inside the class returned by `get_user_model()`! (it is done in AppConfig `ready()` method)
+
+You will then need to create a new "Global Page Permission" entry with your user/group, and to select the site where the user/group will have the right to post new articles/agenda posts.
+
+*If you're curious about this function, [here it is](djangocms_stories_agenda/apps.py).*
+
+### Recurrences
+
+Recurring events are handled with the help of `django-recurrence` package. Only the first event is saved into database, and following recurring events are added into querysets just before they are displayed. Only events that will occur up to `n` days after the first event are displayed. You can change this delay with the setting `DJANGOCMS_STORIES_AGENDA_RECURRENCE_MAX_DAYS_SEARCH`.
+
+*You need to update the way you display dates on the templates in order to show the correct date from a recurring event, like this:*
+
+```jinja2
+{% if post.occurrence %}
+    {# use post.occurrence here #}
+{% else %}
+    {% with post_event=post.extension.first %}
+        {# use post_event.event_start_date and post_event.event_end_date here #}
+    {% endwith %}
+{% endif %}
+```
+
+## Tests
+
+Run the tests using tox:
+```sh
+tox
+```
+
+Run the tests using pytest:
+```sh
+virtualenv .venv
+source .venv/bin/activate
+pip install -r requirements-test.txt
+pytest
+```
+
+
