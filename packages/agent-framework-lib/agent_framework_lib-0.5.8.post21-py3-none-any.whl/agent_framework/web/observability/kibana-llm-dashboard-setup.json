@@ -1,0 +1,478 @@
+{
+  "description": "Kibana LLM Metrics Dashboard Setup - TSVB Visualizations",
+  "note": "This dashboard uses direct ES logging via LLMMetricsLogger. Index patterns: agent-metrics-llm-* for LLM metrics, agent-metrics-api-* for API timing.",
+  "index_patterns": {
+    "llm": "agent-metrics-llm-*",
+    "api": "agent-metrics-api-*"
+  },
+  "index_templates": {
+    "llm_metrics": {
+      "name": "agent-metrics-llm-template",
+      "index_patterns": ["agent-metrics-llm-*"],
+      "template": {
+        "settings": {
+          "number_of_shards": 1,
+          "number_of_replicas": 0
+        },
+        "mappings": {
+          "properties": {
+            "@timestamp": {"type": "date"},
+            "input_tokens": {"type": "integer"},
+            "output_tokens": {"type": "integer"},
+            "thinking_tokens": {"type": "integer"},
+            "total_tokens": {"type": "integer"},
+            "duration_ms": {"type": "float"},
+            "time_to_first_token_ms": {"type": "float"},
+            "tokens_per_second": {"type": "float"},
+            "model_name": {"type": "keyword"},
+            "session_id": {"type": "keyword"},
+            "agent_id": {"type": "keyword"},
+            "api_request_id": {"type": "keyword"},
+            "tool_call_count": {"type": "integer"},
+            "tool_call_duration_ms": {"type": "float"}
+          }
+        }
+      }
+    },
+    "api_metrics": {
+      "name": "agent-metrics-api-template",
+      "index_patterns": ["agent-metrics-api-*"],
+      "template": {
+        "settings": {
+          "number_of_shards": 1,
+          "number_of_replicas": 0
+        },
+        "mappings": {
+          "properties": {
+            "@timestamp": {"type": "date"},
+            "request_id": {"type": "keyword"},
+            "endpoint": {"type": "keyword"},
+            "method": {"type": "keyword"},
+            "session_id": {"type": "keyword"},
+            "user_id": {"type": "keyword"},
+            "agent_id": {"type": "keyword"},
+            "total_api_duration_ms": {"type": "float"},
+            "preprocessing_duration_ms": {"type": "float"},
+            "llm_duration_ms": {"type": "float"},
+            "total_llm_duration_ms": {"type": "float"},
+            "postprocessing_duration_ms": {"type": "float"},
+            "overhead_ms": {"type": "float"},
+            "llm_percentage": {"type": "float"},
+            "llm_call_count": {"type": "integer"},
+            "time_to_first_chunk_ms": {"type": "float"},
+            "is_streaming": {"type": "boolean"},
+            "status_code": {"type": "integer"}
+          }
+        }
+      }
+    }
+  },
+  "visualizations": [
+    {
+      "id": "llm-tokens-timeseries",
+      "title": "LLM Tokens Over Time",
+      "type": "metrics",
+      "params": {
+        "id": "tokens-tsvb",
+        "type": "timeseries",
+        "series": [
+          {
+            "id": "input-series",
+            "color": "#68BC00",
+            "split_mode": "everything",
+            "metrics": [{"id": "sum-input", "type": "sum", "field": "input_tokens"}],
+            "chart_type": "line",
+            "line_width": 2,
+            "fill": 0.3,
+            "label": "Input Tokens"
+          },
+          {
+            "id": "output-series",
+            "color": "#FA28FF",
+            "split_mode": "everything",
+            "metrics": [{"id": "sum-output", "type": "sum", "field": "output_tokens"}],
+            "chart_type": "line",
+            "line_width": 2,
+            "fill": 0.3,
+            "label": "Output Tokens"
+          },
+          {
+            "id": "thinking-series",
+            "color": "#6092C0",
+            "split_mode": "everything",
+            "metrics": [{"id": "sum-thinking", "type": "sum", "field": "thinking_tokens"}],
+            "chart_type": "line",
+            "line_width": 2,
+            "fill": 0.3,
+            "label": "Thinking Tokens"
+          }
+        ],
+        "time_field": "@timestamp",
+        "index_pattern": "agent-metrics-llm-*",
+        "interval": "auto",
+        "show_legend": 1,
+        "show_grid": 1
+      }
+    },
+    {
+      "id": "llm-duration-timeseries",
+      "title": "LLM Duration Over Time",
+      "type": "metrics",
+      "params": {
+        "id": "duration-tsvb",
+        "type": "timeseries",
+        "series": [
+          {
+            "id": "llm-dur",
+            "color": "#0A437C",
+            "split_mode": "everything",
+            "metrics": [{"id": "llm-dur-metric", "type": "percentile", "field": "duration_ms", "percentiles": [{"id": "p50", "value": 50}]}],
+            "chart_type": "line",
+            "line_width": 2,
+            "fill": 0.1,
+            "label": "LLM Duration P50 (ms)"
+          },
+          {
+            "id": "ttft",
+            "color": "#54B399",
+            "split_mode": "everything",
+            "metrics": [{"id": "ttft-metric", "type": "percentile", "field": "time_to_first_token_ms", "percentiles": [{"id": "p50", "value": 50}]}],
+            "chart_type": "line",
+            "line_width": 2,
+            "fill": 0.1,
+            "label": "Time to First Token P50 (ms)"
+          }
+        ],
+        "time_field": "@timestamp",
+        "index_pattern": "agent-metrics-llm-*",
+        "interval": "auto",
+        "show_legend": 1,
+        "show_grid": 1
+      }
+    },
+    {
+      "id": "llm-input-tokens-metric",
+      "title": "Total Input Tokens",
+      "type": "metrics",
+      "params": {
+        "id": "input-metric",
+        "type": "metric",
+        "series": [
+          {
+            "id": "input-series",
+            "color": "#68BC00",
+            "split_mode": "everything",
+            "metrics": [{"id": "sum-input", "type": "sum", "field": "input_tokens"}],
+            "label": "Input Tokens"
+          }
+        ],
+        "time_field": "@timestamp",
+        "index_pattern": "agent-metrics-llm-*",
+        "interval": "auto",
+        "time_range_mode": "entire_time_range",
+        "drop_last_bucket": 0
+      }
+    },
+    {
+      "id": "llm-output-tokens-metric",
+      "title": "Total Output Tokens",
+      "type": "metrics",
+      "params": {
+        "id": "output-metric",
+        "type": "metric",
+        "series": [
+          {
+            "id": "output-series",
+            "color": "#FA28FF",
+            "split_mode": "everything",
+            "metrics": [{"id": "sum-output", "type": "sum", "field": "output_tokens"}],
+            "label": "Output Tokens"
+          }
+        ],
+        "time_field": "@timestamp",
+        "index_pattern": "agent-metrics-llm-*",
+        "interval": "auto",
+        "time_range_mode": "entire_time_range",
+        "drop_last_bucket": 0
+      }
+    },
+    {
+      "id": "llm-thinking-tokens-metric",
+      "title": "Total Thinking Tokens",
+      "type": "metrics",
+      "params": {
+        "id": "thinking-metric",
+        "type": "metric",
+        "series": [
+          {
+            "id": "thinking-series",
+            "color": "#6092C0",
+            "split_mode": "everything",
+            "metrics": [{"id": "sum-thinking", "type": "sum", "field": "thinking_tokens"}],
+            "label": "Thinking Tokens"
+          }
+        ],
+        "time_field": "@timestamp",
+        "index_pattern": "agent-metrics-llm-*",
+        "interval": "auto",
+        "time_range_mode": "entire_time_range",
+        "drop_last_bucket": 0
+      }
+    },
+    {
+      "id": "llm-avg-duration-metric",
+      "title": "Avg LLM Call Duration (ms)",
+      "type": "metrics",
+      "params": {
+        "id": "llm-dur-metric",
+        "type": "metric",
+        "series": [
+          {
+            "id": "llm-avg",
+            "color": "#0A437C",
+            "split_mode": "everything",
+            "metrics": [{"id": "avg-llm", "type": "avg", "field": "duration_ms"}],
+            "label": "Avg per LLM Call (ms)"
+          }
+        ],
+        "time_field": "@timestamp",
+        "index_pattern": "agent-metrics-llm-*",
+        "interval": "auto",
+        "time_range_mode": "entire_time_range",
+        "drop_last_bucket": 0
+      }
+    },
+    {
+      "id": "llm-ttft-metric",
+      "title": "Avg Time to First Token (ms)",
+      "type": "metrics",
+      "params": {
+        "id": "ttft-metric",
+        "type": "metric",
+        "series": [
+          {
+            "id": "ttft-avg",
+            "color": "#54B399",
+            "split_mode": "everything",
+            "metrics": [{"id": "avg-ttft", "type": "avg", "field": "time_to_first_token_ms"}],
+            "label": "Avg TTFT (ms)"
+          }
+        ],
+        "time_field": "@timestamp",
+        "index_pattern": "agent-metrics-llm-*",
+        "interval": "auto",
+        "time_range_mode": "entire_time_range",
+        "drop_last_bucket": 0
+      }
+    },
+    {
+      "id": "tokens-by-model",
+      "title": "Tokens by Model",
+      "type": "metrics",
+      "params": {
+        "id": "tokens-model",
+        "type": "top_n",
+        "series": [
+          {
+            "id": "by-model",
+            "color": "#68BC00",
+            "split_mode": "terms",
+            "terms_field": "model_name",
+            "terms_size": 10,
+            "metrics": [{"id": "sum-tokens", "type": "sum", "field": "total_tokens"}],
+            "label": "Total Tokens"
+          }
+        ],
+        "time_field": "@timestamp",
+        "index_pattern": "agent-metrics-llm-*",
+        "interval": "auto",
+        "time_range_mode": "entire_time_range",
+        "drop_last_bucket": 0
+      }
+    },
+    {
+      "id": "llm-tool-calls-metric",
+      "title": "Tool Calls Count",
+      "type": "metrics",
+      "params": {
+        "id": "tool-calls-metric",
+        "type": "metric",
+        "series": [
+          {
+            "id": "tool-calls",
+            "color": "#54B399",
+            "split_mode": "everything",
+            "metrics": [{"id": "sum-tool-calls", "type": "sum", "field": "tool_call_count"}],
+            "label": "Tool Calls"
+          }
+        ],
+        "time_field": "@timestamp",
+        "index_pattern": "agent-metrics-llm-*",
+        "interval": "auto",
+        "time_range_mode": "entire_time_range",
+        "drop_last_bucket": 0
+      }
+    },
+    {
+      "id": "llm-calls-count",
+      "title": "LLM Calls Count",
+      "type": "metrics",
+      "params": {
+        "id": "llm-calls-metric",
+        "type": "metric",
+        "series": [
+          {
+            "id": "llm-calls",
+            "color": "#F04E98",
+            "split_mode": "everything",
+            "metrics": [{"id": "count-llm-calls", "type": "count"}],
+            "label": "LLM Calls"
+          }
+        ],
+        "time_field": "@timestamp",
+        "index_pattern": "agent-metrics-llm-*",
+        "interval": "auto",
+        "time_range_mode": "entire_time_range",
+        "drop_last_bucket": 0
+      }
+    },
+    {
+      "id": "api-duration-timeseries",
+      "title": "API Duration Over Time - Message & Stream",
+      "type": "metrics",
+      "params": {
+        "id": "api-dur-tsvb",
+        "type": "timeseries",
+        "series": [
+          {
+            "id": "api-dur",
+            "color": "#F04E98",
+            "split_mode": "everything",
+            "metrics": [{"id": "api-dur-metric", "type": "percentile", "field": "total_api_duration_ms", "percentiles": [{"id": "p50", "value": 50}]}],
+            "chart_type": "line",
+            "line_width": 2,
+            "fill": 0.1,
+            "label": "API Duration P50 (ms)",
+            "filter": {
+              "query": "endpoint:\"/message\" or endpoint:\"/stream\"",
+              "language": "kuery"
+            }
+          }
+        ],
+        "time_field": "@timestamp",
+        "index_pattern": "agent-metrics-api-*",
+        "interval": "auto",
+        "show_legend": 1,
+        "show_grid": 1,
+        "filter": {
+          "query": "endpoint:\"/message\" or endpoint:\"/stream\"",
+          "language": "kuery"
+        }
+      }
+    },
+    {
+      "id": "api-avg-duration-metric",
+      "title": "Avg API Duration (ms) - Message & Stream",
+      "type": "metrics",
+      "params": {
+        "id": "api-dur-metric",
+        "type": "metric",
+        "series": [
+          {
+            "id": "api-avg",
+            "color": "#F04E98",
+            "split_mode": "everything",
+            "metrics": [{"id": "avg-api", "type": "avg", "field": "total_api_duration_ms"}],
+            "label": "Avg API Duration (ms)",
+            "filter": {
+              "query": "endpoint:\"/message\" or endpoint:\"/stream\"",
+              "language": "kuery"
+            }
+          }
+        ],
+        "time_field": "@timestamp",
+        "index_pattern": "agent-metrics-api-*",
+        "interval": "auto",
+        "time_range_mode": "entire_time_range",
+        "drop_last_bucket": 0,
+        "filter": {
+          "query": "endpoint:\"/message\" or endpoint:\"/stream\"",
+          "language": "kuery"
+        }
+      }
+    },
+    {
+      "id": "duration-by-endpoint",
+      "title": "API Duration by Endpoint",
+      "type": "metrics",
+      "params": {
+        "id": "dur-endpoint",
+        "type": "top_n",
+        "series": [
+          {
+            "id": "by-endpoint",
+            "color": "#F04E98",
+            "split_mode": "terms",
+            "terms_field": "endpoint",
+            "terms_size": 10,
+            "metrics": [{"id": "avg-endpoint", "type": "avg", "field": "total_api_duration_ms"}],
+            "label": "Avg Duration (ms)"
+          }
+        ],
+        "time_field": "@timestamp",
+        "index_pattern": "agent-metrics-api-*",
+        "interval": "auto",
+        "time_range_mode": "entire_time_range",
+        "drop_last_bucket": 0
+      }
+    },
+    {
+      "id": "requests-by-endpoint",
+      "title": "Requests by Endpoint",
+      "type": "metrics",
+      "params": {
+        "id": "requests-endpoint",
+        "type": "top_n",
+        "series": [
+          {
+            "id": "by-endpoint-count",
+            "color": "#6092C0",
+            "split_mode": "terms",
+            "terms_field": "endpoint",
+            "terms_size": 10,
+            "metrics": [{"id": "count-requests", "type": "count"}],
+            "label": "Request Count"
+          }
+        ],
+        "time_field": "@timestamp",
+        "index_pattern": "agent-metrics-api-*",
+        "interval": "auto",
+        "time_range_mode": "entire_time_range",
+        "drop_last_bucket": 0
+      }
+    }
+  ],
+  "dashboard": {
+    "id": "llm-metrics-dash",
+    "title": "Agent Framework - LLM Metrics",
+    "description": "LLM Tokens (Input/Output/Thinking), Duration, Performance Metrics, API Timing",
+    "timeFrom": "now-1h",
+    "timeTo": "now",
+    "panels": [
+      {"id": "1", "vizId": "llm-tokens-timeseries", "x": 0, "y": 0, "w": 24, "h": 12},
+      {"id": "2", "vizId": "llm-duration-timeseries", "x": 24, "y": 0, "w": 24, "h": 12},
+      {"id": "3", "vizId": "llm-input-tokens-metric", "x": 0, "y": 12, "w": 8, "h": 8},
+      {"id": "4", "vizId": "llm-output-tokens-metric", "x": 8, "y": 12, "w": 8, "h": 8},
+      {"id": "5", "vizId": "llm-thinking-tokens-metric", "x": 16, "y": 12, "w": 8, "h": 8},
+      {"id": "6", "vizId": "llm-avg-duration-metric", "x": 24, "y": 12, "w": 8, "h": 8},
+      {"id": "7", "vizId": "llm-ttft-metric", "x": 32, "y": 12, "w": 8, "h": 8},
+      {"id": "8", "vizId": "api-avg-duration-metric", "x": 40, "y": 12, "w": 8, "h": 8},
+      {"id": "9", "vizId": "tokens-by-model", "x": 0, "y": 20, "w": 24, "h": 10},
+      {"id": "10", "vizId": "llm-tool-calls-metric", "x": 24, "y": 20, "w": 12, "h": 10},
+      {"id": "11", "vizId": "llm-calls-count", "x": 36, "y": 20, "w": 12, "h": 10},
+      {"id": "12", "vizId": "api-duration-timeseries", "x": 0, "y": 30, "w": 48, "h": 12},
+      {"id": "14", "vizId": "duration-by-endpoint", "x": 0, "y": 42, "w": 24, "h": 10},
+      {"id": "15", "vizId": "requests-by-endpoint", "x": 24, "y": 42, "w": 24, "h": 10}
+    ]
+  }
+}
