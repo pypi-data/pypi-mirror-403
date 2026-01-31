@@ -1,0 +1,66 @@
+from typing import List, Optional
+
+from pydantic import Field, model_validator
+
+import fhircraft.fhir.resources.validators as fhir_validators
+from fhircraft.fhir.resources.datatypes.primitives import *
+from fhircraft.fhir.resources.datatypes.R4B.complex import Element, ContactPoint
+
+
+class ContactDetail(Element):
+    """
+    Contact information
+    """
+
+    _type = "ContactDetail"
+
+    name: Optional[String] = Field(
+        description="Name of an individual to contact",
+        default=None,
+    )
+    name_ext: Optional[Element] = Field(
+        description="Placeholder element for name extensions",
+        default=None,
+        alias="_name",
+    )
+    telecom: Optional[List[ContactPoint]] = Field(
+        description="Contact details for individual or organization",
+        default=None,
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "telecom",
+                "name",
+                "extension",
+                "extension",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_ext_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=("extension",),
+            expression="extension.exists() != value.exists()",
+            human="Must have either extensions or value[x], not both",
+            key="ext-1",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_model_validator(self):
+        return fhir_validators.validate_model_constraint(
+            self,
+            expression="hasValue() or (children().count() > id.count()) or $this is Parameters",
+            human="All FHIR elements must have a @value or children unless an empty Parameters resource",
+            key="ele-1",
+            severity="error",
+        )

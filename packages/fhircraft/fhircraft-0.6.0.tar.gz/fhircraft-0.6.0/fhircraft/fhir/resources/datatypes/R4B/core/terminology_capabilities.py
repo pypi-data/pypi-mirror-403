@@ -1,0 +1,878 @@
+import fhircraft.fhir.resources.validators as fhir_validators
+from pydantic import Field, model_validator
+from typing import Optional, List as ListType, Literal
+
+NoneType = type(None)
+
+from fhircraft.fhir.resources.datatypes.primitives import (
+    String,
+    Uri,
+    Code,
+    Boolean,
+    DateTime,
+    Markdown,
+    Url,
+    Canonical,
+)
+
+from fhircraft.fhir.resources.datatypes.R4B.complex import (
+    Element,
+    Meta,
+    Narrative,
+    Extension,
+    ContactDetail,
+    UsageContext,
+    CodeableConcept,
+    BackboneElement,
+)
+from .resource import Resource
+from .domain_resource import DomainResource
+
+
+class TerminologyCapabilitiesSoftware(BackboneElement):
+    """
+    Software that is covered by this terminology capability statement.  It is used when the statement describes the capabilities of a particular software version, independent of an installation.
+    """
+
+    name: Optional[String] = Field(
+        description="A name the software is known by",
+        default=None,
+    )
+    name_ext: Optional[Element] = Field(
+        description="Placeholder element for name extensions",
+        default=None,
+        alias="_name",
+    )
+    version: Optional[String] = Field(
+        description="Version covered by this statement",
+        default=None,
+    )
+    version_ext: Optional[Element] = Field(
+        description="Placeholder element for version extensions",
+        default=None,
+        alias="_version",
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "version",
+                "name",
+                "modifierExtension",
+                "extension",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+
+class TerminologyCapabilitiesImplementation(BackboneElement):
+    """
+    Identifies a specific implementation instance that is described by the terminology capability statement - i.e. a particular installation, rather than the capabilities of a software program.
+    """
+
+    description: Optional[String] = Field(
+        description="Describes this specific instance",
+        default=None,
+    )
+    description_ext: Optional[Element] = Field(
+        description="Placeholder element for description extensions",
+        default=None,
+        alias="_description",
+    )
+    url: Optional[Url] = Field(
+        description="Base URL for the implementation",
+        default=None,
+    )
+    url_ext: Optional[Element] = Field(
+        description="Placeholder element for url extensions",
+        default=None,
+        alias="_url",
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "url",
+                "description",
+                "modifierExtension",
+                "extension",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+
+class TerminologyCapabilitiesCodeSystemVersionFilter(BackboneElement):
+    """
+    Filter Properties supported.
+    """
+
+    code: Optional[Code] = Field(
+        description="Code of the property supported",
+        default=None,
+    )
+    code_ext: Optional[Element] = Field(
+        description="Placeholder element for code extensions",
+        default=None,
+        alias="_code",
+    )
+    op: Optional[ListType[Code]] = Field(
+        description="Operations supported for the property",
+        default=None,
+    )
+    op_ext: Optional[Element] = Field(
+        description="Placeholder element for op extensions",
+        default=None,
+        alias="_op",
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "op",
+                "code",
+                "modifierExtension",
+                "extension",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+
+class TerminologyCapabilitiesCodeSystemVersion(BackboneElement):
+    """
+    For the code system, a list of versions that are supported by the server.
+    """
+
+    code: Optional[String] = Field(
+        description="Version identifier for this version",
+        default=None,
+    )
+    code_ext: Optional[Element] = Field(
+        description="Placeholder element for code extensions",
+        default=None,
+        alias="_code",
+    )
+    isDefault: Optional[Boolean] = Field(
+        description="If this is the default version for this code system",
+        default=None,
+    )
+    isDefault_ext: Optional[Element] = Field(
+        description="Placeholder element for isDefault extensions",
+        default=None,
+        alias="_isDefault",
+    )
+    compositional: Optional[Boolean] = Field(
+        description="If compositional grammar is supported",
+        default=None,
+    )
+    compositional_ext: Optional[Element] = Field(
+        description="Placeholder element for compositional extensions",
+        default=None,
+        alias="_compositional",
+    )
+    language: Optional[ListType[Code]] = Field(
+        description="Language Displays supported",
+        default=None,
+    )
+    language_ext: Optional[Element] = Field(
+        description="Placeholder element for language extensions",
+        default=None,
+        alias="_language",
+    )
+    filter: Optional[ListType[TerminologyCapabilitiesCodeSystemVersionFilter]] = Field(
+        description="Filter Properties supported",
+        default=None,
+    )
+    property_: Optional[ListType[Code]] = Field(
+        description="Properties supported for $lookup",
+        default=None,
+    )
+    property_ext: Optional[Element] = Field(
+        description="Placeholder element for property extensions",
+        default=None,
+        alias="_property",
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "property_",
+                "filter",
+                "language",
+                "compositional",
+                "isDefault",
+                "code",
+                "modifierExtension",
+                "extension",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+
+class TerminologyCapabilitiesCodeSystem(BackboneElement):
+    """
+    Identifies a code system that is supported by the server. If there is a no code system URL, then this declares the general assumptions a client can make about support for any CodeSystem resource.
+    """
+
+    uri: Optional[Canonical] = Field(
+        description="URI for the Code System",
+        default=None,
+    )
+    uri_ext: Optional[Element] = Field(
+        description="Placeholder element for uri extensions",
+        default=None,
+        alias="_uri",
+    )
+    version: Optional[ListType[TerminologyCapabilitiesCodeSystemVersion]] = Field(
+        description="Version of Code System supported",
+        default=None,
+    )
+    subsumption: Optional[Boolean] = Field(
+        description="Whether subsumption is supported",
+        default=None,
+    )
+    subsumption_ext: Optional[Element] = Field(
+        description="Placeholder element for subsumption extensions",
+        default=None,
+        alias="_subsumption",
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "subsumption",
+                "version",
+                "uri",
+                "modifierExtension",
+                "extension",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+
+class TerminologyCapabilitiesExpansionParameter(BackboneElement):
+    """
+    Supported expansion parameter.
+    """
+
+    name: Optional[Code] = Field(
+        description="Expansion Parameter name",
+        default=None,
+    )
+    name_ext: Optional[Element] = Field(
+        description="Placeholder element for name extensions",
+        default=None,
+        alias="_name",
+    )
+    documentation: Optional[String] = Field(
+        description="Description of support for parameter",
+        default=None,
+    )
+    documentation_ext: Optional[Element] = Field(
+        description="Placeholder element for documentation extensions",
+        default=None,
+        alias="_documentation",
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "documentation",
+                "name",
+                "modifierExtension",
+                "extension",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+
+class TerminologyCapabilitiesExpansion(BackboneElement):
+    """
+    Information about the [ValueSet/$expand](https://www.hl7.org/fhir/R4B/valueset-operation-expand.html) operation.
+    """
+
+    hierarchical: Optional[Boolean] = Field(
+        description="Whether the server can return nested value sets",
+        default=None,
+    )
+    hierarchical_ext: Optional[Element] = Field(
+        description="Placeholder element for hierarchical extensions",
+        default=None,
+        alias="_hierarchical",
+    )
+    paging: Optional[Boolean] = Field(
+        description="Whether the server supports paging on expansion",
+        default=None,
+    )
+    paging_ext: Optional[Element] = Field(
+        description="Placeholder element for paging extensions",
+        default=None,
+        alias="_paging",
+    )
+    incomplete: Optional[Boolean] = Field(
+        description="Allow request for incomplete expansions?",
+        default=None,
+    )
+    incomplete_ext: Optional[Element] = Field(
+        description="Placeholder element for incomplete extensions",
+        default=None,
+        alias="_incomplete",
+    )
+    parameter: Optional[ListType[TerminologyCapabilitiesExpansionParameter]] = Field(
+        description="Supported expansion parameter",
+        default=None,
+    )
+    textFilter: Optional[Markdown] = Field(
+        description="Documentation about text searching works",
+        default=None,
+    )
+    textFilter_ext: Optional[Element] = Field(
+        description="Placeholder element for textFilter extensions",
+        default=None,
+        alias="_textFilter",
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "textFilter",
+                "parameter",
+                "incomplete",
+                "paging",
+                "hierarchical",
+                "modifierExtension",
+                "extension",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+
+class TerminologyCapabilitiesValidateCode(BackboneElement):
+    """
+    Information about the [ValueSet/$validate-code](https://hl7.org/fhir/R4B/valueset-operation-validate-code.html) operation.
+    """
+
+    translations: Optional[Boolean] = Field(
+        description="Whether translations are validated",
+        default=None,
+    )
+    translations_ext: Optional[Element] = Field(
+        description="Placeholder element for translations extensions",
+        default=None,
+        alias="_translations",
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "translations",
+                "modifierExtension",
+                "extension",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+
+class TerminologyCapabilitiesTranslation(BackboneElement):
+    """
+    Information about the [ConceptMap/$translate](https://hl7.org/fhir/R4B/conceptmap-operation-translate.html) operation.
+    """
+
+    needsMap: Optional[Boolean] = Field(
+        description="Whether the client must identify the map",
+        default=None,
+    )
+    needsMap_ext: Optional[Element] = Field(
+        description="Placeholder element for needsMap extensions",
+        default=None,
+        alias="_needsMap",
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "needsMap",
+                "modifierExtension",
+                "extension",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+
+class TerminologyCapabilitiesClosure(BackboneElement):
+    """
+    Whether the $closure operation is supported.
+    """
+
+    translation: Optional[Boolean] = Field(
+        description="If cross-system closure is supported",
+        default=None,
+    )
+    translation_ext: Optional[Element] = Field(
+        description="Placeholder element for translation extensions",
+        default=None,
+        alias="_translation",
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "translation",
+                "modifierExtension",
+                "extension",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+
+class TerminologyCapabilities(DomainResource):
+    """
+    A TerminologyCapabilities resource documents a set of capabilities (behaviors) of a FHIR Terminology Server that may be used as a statement of actual server functionality or a statement of required or desired server implementation.
+    """
+
+    _abstract = False
+    _type = "TerminologyCapabilities"
+    _canonical_url = "http://hl7.org/fhir/StructureDefinition/TerminologyCapabilities"
+
+    id: Optional[String] = Field(
+        description="Logical id of this artifact",
+        default=None,
+    )
+    id_ext: Optional[Element] = Field(
+        description="Placeholder element for id extensions",
+        default=None,
+        alias="_id",
+    )
+    meta: Optional[Meta] = Field(
+        description="Metadata about the resource.",
+        default_factory=lambda: Meta(
+            profile=["http://hl7.org/fhir/StructureDefinition/TerminologyCapabilities"]
+        ),
+    )
+    implicitRules: Optional[Uri] = Field(
+        description="A set of rules under which this content was created",
+        default=None,
+    )
+    implicitRules_ext: Optional[Element] = Field(
+        description="Placeholder element for implicitRules extensions",
+        default=None,
+        alias="_implicitRules",
+    )
+    language: Optional[Code] = Field(
+        description="Language of the resource content",
+        default=None,
+    )
+    language_ext: Optional[Element] = Field(
+        description="Placeholder element for language extensions",
+        default=None,
+        alias="_language",
+    )
+    text: Optional[Narrative] = Field(
+        description="Text summary of the resource, for human interpretation",
+        default=None,
+    )
+    contained: Optional[ListType[Resource]] = Field(
+        description="Contained, inline Resources",
+        default=None,
+    )
+    extension: Optional[ListType[Extension]] = Field(
+        description="Additional content defined by implementations",
+        default=None,
+    )
+    modifierExtension: Optional[ListType[Extension]] = Field(
+        description="Extensions that cannot be ignored",
+        default=None,
+    )
+    url: Optional[Uri] = Field(
+        description="Canonical identifier for this terminology capabilities, represented as a URI (globally unique)",
+        default=None,
+    )
+    url_ext: Optional[Element] = Field(
+        description="Placeholder element for url extensions",
+        default=None,
+        alias="_url",
+    )
+    version: Optional[String] = Field(
+        description="Business version of the terminology capabilities",
+        default=None,
+    )
+    version_ext: Optional[Element] = Field(
+        description="Placeholder element for version extensions",
+        default=None,
+        alias="_version",
+    )
+    name: Optional[String] = Field(
+        description="Name for this terminology capabilities (computer friendly)",
+        default=None,
+    )
+    name_ext: Optional[Element] = Field(
+        description="Placeholder element for name extensions",
+        default=None,
+        alias="_name",
+    )
+    title: Optional[String] = Field(
+        description="Name for this terminology capabilities (human friendly)",
+        default=None,
+    )
+    title_ext: Optional[Element] = Field(
+        description="Placeholder element for title extensions",
+        default=None,
+        alias="_title",
+    )
+    status: Optional[Code] = Field(
+        description="draft | active | retired | unknown",
+        default=None,
+    )
+    status_ext: Optional[Element] = Field(
+        description="Placeholder element for status extensions",
+        default=None,
+        alias="_status",
+    )
+    experimental: Optional[Boolean] = Field(
+        description="For testing purposes, not real usage",
+        default=None,
+    )
+    experimental_ext: Optional[Element] = Field(
+        description="Placeholder element for experimental extensions",
+        default=None,
+        alias="_experimental",
+    )
+    date: Optional[DateTime] = Field(
+        description="Date last changed",
+        default=None,
+    )
+    date_ext: Optional[Element] = Field(
+        description="Placeholder element for date extensions",
+        default=None,
+        alias="_date",
+    )
+    publisher: Optional[String] = Field(
+        description="Name of the publisher (organization or individual)",
+        default=None,
+    )
+    publisher_ext: Optional[Element] = Field(
+        description="Placeholder element for publisher extensions",
+        default=None,
+        alias="_publisher",
+    )
+    contact: Optional[ListType[ContactDetail]] = Field(
+        description="Contact details for the publisher",
+        default=None,
+    )
+    description: Optional[Markdown] = Field(
+        description="Natural language description of the terminology capabilities",
+        default=None,
+    )
+    description_ext: Optional[Element] = Field(
+        description="Placeholder element for description extensions",
+        default=None,
+        alias="_description",
+    )
+    useContext: Optional[ListType[UsageContext]] = Field(
+        description="The context that the content is intended to support",
+        default=None,
+    )
+    jurisdiction: Optional[ListType[CodeableConcept]] = Field(
+        description="Intended jurisdiction for terminology capabilities (if applicable)",
+        default=None,
+    )
+    purpose: Optional[Markdown] = Field(
+        description="Why this terminology capabilities is defined",
+        default=None,
+    )
+    purpose_ext: Optional[Element] = Field(
+        description="Placeholder element for purpose extensions",
+        default=None,
+        alias="_purpose",
+    )
+    copyright: Optional[Markdown] = Field(
+        description="Use and/or publishing restrictions",
+        default=None,
+    )
+    copyright_ext: Optional[Element] = Field(
+        description="Placeholder element for copyright extensions",
+        default=None,
+        alias="_copyright",
+    )
+    kind: Optional[Code] = Field(
+        description="instance | capability | requirements",
+        default=None,
+    )
+    kind_ext: Optional[Element] = Field(
+        description="Placeholder element for kind extensions",
+        default=None,
+        alias="_kind",
+    )
+    software: Optional[TerminologyCapabilitiesSoftware] = Field(
+        description="Software that is covered by this terminology capability statement",
+        default=None,
+    )
+    implementation: Optional[TerminologyCapabilitiesImplementation] = Field(
+        description="If this describes a specific instance",
+        default=None,
+    )
+    lockedDate: Optional[Boolean] = Field(
+        description="Whether lockedDate is supported",
+        default=None,
+    )
+    lockedDate_ext: Optional[Element] = Field(
+        description="Placeholder element for lockedDate extensions",
+        default=None,
+        alias="_lockedDate",
+    )
+    codeSystem: Optional[ListType[TerminologyCapabilitiesCodeSystem]] = Field(
+        description="A code system supported by the server",
+        default=None,
+    )
+    expansion: Optional[TerminologyCapabilitiesExpansion] = Field(
+        description="Information about the [ValueSet/$expand](https://www.hl7.org/fhir/R4B/valueset-operation-expand.html) operation",
+        default=None,
+    )
+    codeSearch: Optional[Code] = Field(
+        description="explicit | all",
+        default=None,
+    )
+    codeSearch_ext: Optional[Element] = Field(
+        description="Placeholder element for codeSearch extensions",
+        default=None,
+        alias="_codeSearch",
+    )
+    validateCode: Optional[TerminologyCapabilitiesValidateCode] = Field(
+        description="Information about the [ValueSet/$validate-code](https://hl7.org/fhir/R4B/valueset-operation-validate-code.html) operation",
+        default=None,
+    )
+    translation: Optional[TerminologyCapabilitiesTranslation] = Field(
+        description="Information about the [ConceptMap/$translate](https://hl7.org/fhir/R4B/conceptmap-operation-translate.html) operation",
+        default=None,
+    )
+    closure: Optional[TerminologyCapabilitiesClosure] = Field(
+        description="Information about the [ConceptMap/$closure](https://hl7.org/fhir/R4B/conceptmap-operation-closure.html) operation",
+        default=None,
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "closure",
+                "translation",
+                "validateCode",
+                "codeSearch",
+                "expansion",
+                "codeSystem",
+                "lockedDate",
+                "implementation",
+                "software",
+                "kind",
+                "copyright",
+                "purpose",
+                "jurisdiction",
+                "useContext",
+                "description",
+                "contact",
+                "publisher",
+                "date",
+                "experimental",
+                "status",
+                "title",
+                "name",
+                "version",
+                "url",
+                "modifierExtension",
+                "extension",
+                "text",
+                "language",
+                "implicitRules",
+                "meta",
+            ),
+            expression="hasValue() or (children().count() > id.count()) or $this is Parameters",
+            human="All FHIR elements must have a @value or children unless an empty Parameters resource",
+            key="ele-1",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_dom_r4b_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=("contained",),
+            expression="($this is Citation or $this is Evidence or $this is EvidenceReport or $this is EvidenceVariable or $this is MedicinalProductDefinition or $this is PackagedProductDefinition or $this is AdministrableProductDefinition or $this is Ingredient or $this is ClinicalUseDefinition or $this is RegulatedAuthorization or $this is SubstanceDefinition or $this is SubscriptionStatus or $this is SubscriptionTopic) implies (%resource is Citation or %resource is Evidence or %resource is EvidenceReport or %resource is EvidenceVariable or %resource is MedicinalProductDefinition or %resource is PackagedProductDefinition or %resource is AdministrableProductDefinition or %resource is Ingredient or %resource is ClinicalUseDefinition or %resource is RegulatedAuthorization or %resource is SubstanceDefinition or %resource is SubscriptionStatus or %resource is SubscriptionTopic)",
+            human="Containing new R4B resources within R4 resources may cause interoperability issues if instances are shared with R4 systems",
+            key="dom-r4b",
+            severity="warning",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_ext_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "modifierExtension",
+                "extension",
+            ),
+            expression="extension.exists() != value.exists()",
+            human="Must have either extensions or value[x], not both",
+            key="ext-1",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_tcp_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=("codeSystem",),
+            expression="version.count() > 1 implies version.all(code.exists())",
+            human="If there is more than one version, a version code must be defined",
+            key="tcp-1",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_dom_2_constraint_model_validator(self):
+        return fhir_validators.validate_model_constraint(
+            self,
+            expression="contained.contained.empty()",
+            human="If the resource is contained in another resource, it SHALL NOT contain nested Resources",
+            key="dom-2",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_dom_3_constraint_model_validator(self):
+        return fhir_validators.validate_model_constraint(
+            self,
+            expression="contained.where(((id.exists() and ('#'+id in (%resource.descendants().reference | %resource.descendants().ofType(canonical) | %resource.descendants().ofType(uri) | %resource.descendants().ofType(url)))) or descendants().where(reference = '#').exists() or descendants().where(as(canonical) = '#').exists() or descendants().where(as(uri) = '#').exists()).not()).trace('unmatched', id).empty()",
+            human="If the resource is contained in another resource, it SHALL be referred to from elsewhere in the resource or SHALL refer to the containing resource",
+            key="dom-3",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_dom_4_constraint_model_validator(self):
+        return fhir_validators.validate_model_constraint(
+            self,
+            expression="contained.meta.versionId.empty() and contained.meta.lastUpdated.empty()",
+            human="If a resource is contained in another resource, it SHALL NOT have a meta.versionId or a meta.lastUpdated",
+            key="dom-4",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_dom_5_constraint_model_validator(self):
+        return fhir_validators.validate_model_constraint(
+            self,
+            expression="contained.meta.security.empty()",
+            human="If a resource is contained in another resource, it SHALL NOT have a security label",
+            key="dom-5",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_dom_6_constraint_model_validator(self):
+        return fhir_validators.validate_model_constraint(
+            self,
+            expression="text.`div`.exists()",
+            human="A resource should have narrative for robust management",
+            key="dom-6",
+            severity="warning",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_tcp_0_constraint_model_validator(self):
+        return fhir_validators.validate_model_constraint(
+            self,
+            expression="name.exists() implies name.matches('[A-Z]([A-Za-z0-9_]){0,254}')",
+            human="Name should be usable as an identifier for the module by machine processing applications such as code generation",
+            key="tcp-0",
+            severity="warning",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_tcp_2_constraint_model_validator(self):
+        return fhir_validators.validate_model_constraint(
+            self,
+            expression="(description.count() + software.count() + implementation.count()) > 0",
+            human="A Capability Statement SHALL have at least one of description, software, or implementation element.",
+            key="tcp-2",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_tcp_3_constraint_model_validator(self):
+        return fhir_validators.validate_model_constraint(
+            self,
+            expression="(kind != 'instance') or implementation.exists()",
+            human="If kind = instance, implementation must be present and software may be present",
+            key="tcp-3",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_tcp_4_constraint_model_validator(self):
+        return fhir_validators.validate_model_constraint(
+            self,
+            expression="(kind != 'capability') or (implementation.exists().not() and software.exists())",
+            human="If kind = capability, implementation must be absent, software must be present",
+            key="tcp-4",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_tcp_5_constraint_model_validator(self):
+        return fhir_validators.validate_model_constraint(
+            self,
+            expression="(kind!='requirements') or (implementation.exists().not() and software.exists().not())",
+            human="If kind = requirements, implementation and software must be absent",
+            key="tcp-5",
+            severity="error",
+        )
