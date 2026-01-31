@@ -1,0 +1,170 @@
+# EvalSync Python Package
+
+A Python implementation of evalsync with CLI tools for synchronizing benchmarked applications.
+
+## Installation
+
+```bash
+# Install from PyPI
+pip install evalsync
+
+# Or install from source
+cd python
+uv sync
+```
+
+## CLI Usage
+
+The package provides the `evalsyncli` command with demo, wrap, and client subcommands:
+
+### Demo Command
+
+Run evalsync demo (can act as server or client):
+
+```bash
+# Run as server (manager)
+evalsyncli demo --experiment-id "test-001" --num-workers 2 --duration 10 --verbose
+
+# Run as client (worker)
+evalsyncli demo --experiment-id "test-001" --role client --verbose
+```
+
+### Wrap Command
+
+Wrap arbitrary CLI programs with evalsync coordination:
+
+```bash
+# Basic usage
+evalsyncli wrap -e "test-001" -c "client-1" -- whoami
+evalsyncli wrap --verbose -e "bench-test" -- sleep 5
+evalsyncli wrap -e "iperf-test" -- iperf3 -c server -t 30 -P 4
+
+# Using environment variables
+export EVALSYNC_EXPERIMENT_ID="bench-001"
+export EVALSYNC_CLIENT_ID="worker-1"
+export EVALSYNC_VERBOSE="true"
+evalsyncli wrap -- whoami
+```
+
+### Client Command
+
+Basic evalsync client (no command wrapping):
+
+```bash
+evalsyncli client -e "test-001" -c "worker-1" --verbose
+```
+
+The wrap command automatically handles the evalsync protocol:
+1. Sends READY signal to manager
+2. Waits for START signal
+3. Marks measurement start
+4. Executes the wrapped command
+5. Marks measurement end
+6. Sends DONE signal when complete
+7. Cleans up resources
+
+#### Signal Handling
+
+The wrapper properly handles signals and forwards them to the wrapped command:
+
+- **SIGTERM/SIGINT**: Forwarded to the child process, allowing graceful shutdown
+- **SIGSTOP**: Cannot be caught, but child processes are in the same process group
+- **Process Groups**: Child processes stay in the same process group as the wrapper
+
+**SIGSTOP Behavior**:
+
+The wrapper keeps child processes in the same process group, so:
+
+```bash
+evalsync -e test -- sleep 30
+
+# To stop both wrapper and child:
+kill -STOP -<process_group_id>   # Stop entire group
+kill -CONT -<process_group_id>   # Resume entire group
+
+# To terminate both:
+kill -TERM <evalsync_pid>        # Graceful termination (recommended)
+kill -TERM -<process_group_id>   # Terminate entire group
+```
+
+**Finding the process group ID**:
+```bash
+# Get process group ID from evalsync PID
+ps -o pgid= -p <evalsync_pid>
+
+# Or use pgrep to find and signal
+pkill -STOP -f "evalsync.*sleep"   # Stop all matching processes
+pkill -CONT -f "evalsync.*sleep"   # Resume all matching processes
+```
+
+### Environment Variables
+
+- `EVALSYNC_EXPERIMENT_ID`: Default experiment ID
+- `EVALSYNC_CLIENT_ID`: Default client ID
+- `EVALSYNC_VERBOSE`: Enable verbose mode ("true"/"1")
+- `EVALSYNC_TIMEOUT`: Default timeout in seconds
+
+## Python API
+
+```python
+from evalsync.worker import ExperimentWorker
+from evalsync.manager import ExperimentManager
+
+# Worker usage
+worker = ExperimentWorker("experiment-1", "client-1", verbose=True)
+worker.ready()
+worker.wait_for_start()
+# ... warmup ...
+worker.measure_start()
+# ... measured work ...
+worker.measure_end()
+# ... cleanup ...
+worker.wait_for_stop()
+worker.cleanup()
+
+# If measurement end coincides with workload end, you can skip measure_end()
+# and let wait_for_stop() transition MEASURING → DONE on END.
+
+# Manager usage
+manager = ExperimentManager("experiment-1", num_workers=2, verbose=True)
+manager.wait_for_all_workers()
+manager.start_all()
+# ... wait for work to complete ...
+manager.stop_all()
+manager.cleanup()
+```
+
+## Development
+
+### Setup
+
+Install dependencies:
+```bash
+uv sync --group dev
+```
+
+### Generate Protobuf Proto
+
+```bash
+protoc --proto_path=../proto --python_out=src/evalsync/proto --mypy_out=src/evalsync/proto ../proto/sync.proto
+```
+
+### Running Tests
+
+```bash
+uv run pytest
+```
+
+### Linting and Type Checking
+
+```bash
+uv run ruff check
+uv run mypy src/
+```
+
+### Submit to PyPI
+
+```bash
+uv build
+uv publish
+```
