@@ -1,0 +1,23 @@
+# Cloud SQL Proxy (local dev). Requires ADC on host:
+#   gcloud auth application-default login
+# The run script mounts your ADC into the container; ensure the path below
+# exists (e.g. $HOME/.config/gcloud/application_default_credentials.json).
+name: cloudsql-local
+
+services:
+  cloud-sql-proxy:
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.11.4
+    container_name: cloud-sql-proxy
+    command:
+      - "--address=0.0.0.0"
+      - "--port=${CLOUD_SQL_PORT:-3306}"
+      - "${CLOUD_SQL_INSTANCE}"
+    ports:
+      - "${CLOUD_SQL_PORT:-3306}:3306"
+    volumes:
+      # Use host ADC so the proxy can authenticate to Cloud SQL.
+      # Docker Compose expands $HOME; run script sets CLOUD_SQL_ADC_PATH if needed.
+      - ${CLOUD_SQL_ADC_PATH:-$HOME/.config/gcloud/application_default_credentials.json}:/creds/adc.json:ro
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /creds/adc.json
+    restart: unless-stopped
