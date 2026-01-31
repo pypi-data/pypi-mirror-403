@@ -1,0 +1,194 @@
+from __future__ import annotations
+
+import asyncio
+import inspect
+from dataclasses import InitVar, asdict, dataclass, field
+from logging import Logger
+from pathlib import Path
+from typing import Awaitable, Callable, Generic, TypeAlias, TypeVar
+
+from oceanprotocol_job_details import JobDetails  # type: ignore
+
+from ocean_runner.config import Config
+
+InputT = TypeVar("InputT")
+ResultT = TypeVar("ResultT")
+T = TypeVar("T")
+
+
+Algo: TypeAlias = "Algorithm[InputT, ResultT]"
+ValidateFuncT: TypeAlias = Callable[[Algo], None | Awaitable[None] | None]
+RunFuncT: TypeAlias = Callable[[Algo], ResultT | Awaitable[ResultT]]
+SaveFuncT: TypeAlias = Callable[[Algo, ResultT, Path], Awaitable[None] | None]
+ErrorFuncT: TypeAlias = Callable[[Algo, Exception], Awaitable[None] | None]
+
+
+def default_error_callback(algorithm: Algorithm, error: Exception) -> None:
+    algorithm.logger.exception("Error during algorithm execution")
+    raise error
+
+
+def default_validation(algorithm: Algorithm) -> None:
+    algorithm.logger.info("Validating input using default validation")
+    assert algorithm.job_details.ddos, "DDOs missing"
+    assert algorithm.job_details.files, "Files missing"
+
+
+async def default_save(algorithm: Algorithm, result: ResultT, base: Path) -> None:
+    import aiofiles
+
+    algorithm.logger.info("Saving results using default save")
+    async with aiofiles.open(base / "result.txt", "w+") as f:
+        await f.write(str(result))
+
+
+async def execute(
+    function: Callable[..., T | Awaitable[T]],
+    *args,
+    **kwargs,
+) -> T:
+    result = function(*args, **kwargs)
+
+    if inspect.isawaitable(result):
+        return await result
+
+    return result
+
+
+@dataclass(slots=True)
+class Functions(Generic[InputT, ResultT]):
+    validate: ValidateFuncT = field(default=default_validation, init=False)
+    run: RunFuncT | None = field(default=None, init=False)
+    save: SaveFuncT = field(default=default_save, init=False)
+    error: ErrorFuncT = field(default=default_error_callback, init=False)
+
+
+@dataclass
+class Algorithm(Generic[InputT, ResultT]):
+    """
+    A configurable algorithm runner that behaves like a FastAPI app:
+      - You register `validate`, `run`, and `save_results` via decorators.
+      - You execute the full pipeline by calling `app()`.
+    """
+
+    config: InitVar[Config[InputT] | None] = field(default=None)
+
+    logger: Logger = field(init=False, repr=False)
+
+    _job_details: JobDetails[InputT] = field(init=False)
+    _result: ResultT | None = field(default=None, init=False)
+    _functions: Functions[InputT, ResultT] = field(
+        default_factory=Functions, init=False, repr=False
+    )
+
+    def __post_init__(self, config: Config[InputT] | None) -> None:
+        configuration = config or Config()
+
+        # Configure logger
+        if configuration.logger:
+            self.logger = configuration.logger
+        else:
+            import logging
+
+            logging.basicConfig(
+                level=logging.DEBUG,
+                format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+            self.logger = logging.getLogger(__name__)
+
+        # Normalize base_dir
+        if isinstance(configuration.environment.base_dir, str):
+            configuration.environment.base_dir = Path(
+                configuration.environment.base_dir
+            )
+
+        # Extend sys.path for custom imports
+        if configuration.source_paths:
+            import sys
+
+            sys.path.extend(
+                [str(path.absolute()) for path in configuration.source_paths]
+            )
+            self.logger.debug(
+                f"Added [{len(configuration.source_paths)}] entries to PATH"
+            )
+
+        self.configuration = configuration
+
+    class Error(RuntimeError): ...
+
+    @property
+    def job_details(self) -> JobDetails:
+        if not self._job_details:
+            raise Algorithm.Error("JobDetails not initialized or missing")
+        return self._job_details
+
+    @property
+    def result(self) -> ResultT:
+        if self._result is None:
+            raise Algorithm.Error("Result missing, run the algorithm first")
+        return self._result
+
+    # ---------------------------
+    # Decorators (FastAPI-style)
+    # ---------------------------
+
+    def validate(self, fn: ValidateFuncT) -> ValidateFuncT:
+        self._functions.validate = fn
+        return fn
+
+    def run(self, fn: RunFuncT) -> RunFuncT:
+        self._functions.run = fn
+        return fn
+
+    def save_results(self, fn: SaveFuncT) -> SaveFuncT:
+        self._functions.save = fn
+        return fn
+
+    def on_error(self, fn: ErrorFuncT) -> ErrorFuncT:
+        self._functions.error = fn
+        return fn
+
+    # ---------------------------
+    # Execution Pipeline
+    # ---------------------------
+
+    async def execute(self) -> ResultT | None:
+        # Load job details
+        self._job_details = JobDetails.load(
+            _type=self.configuration.custom_input,
+            base_dir=self.configuration.environment.base_dir,
+            dids=self.configuration.environment.dids,
+            transformation_did=self.configuration.environment.transformation_did,
+            secret=self.configuration.environment.secret,
+        )
+
+        self.logger.info("Loaded JobDetails")
+        self.logger.debug(asdict(self.job_details))
+
+        try:
+            await execute(self._functions.validate, self)
+
+            if self._functions.run:
+                self.logger.info("Running algorithm...")
+                self._result = await execute(self._functions.run, self)
+            else:
+                self.logger.error("No run() function defined. Skipping execution.")
+                self._result = None
+
+            await execute(
+                self._functions.save,
+                algorithm=self,
+                result=self._result,
+                base=self.job_details.paths.outputs,
+            )
+
+        except Exception as e:
+            await execute(self._functions.error, self, e)
+
+        return self._result
+
+    def __call__(self) -> ResultT | None:
+        """Executes the algorithm pipeline: validate → run → save_results."""
+        return asyncio.run(self.execute())
