@@ -1,0 +1,404 @@
+![cdlogo](https://carefuldata.com/images/cdlogo.png)
+
+# Spell Hunter
+
+Spell Hunter is a Python module for searching out "interesting" bytes from files.
+
+The functionality comes from the 'hunter' feature of the Rust CLI tool named [giant-spellbook](https://github.com/jpegleg/giant-spellbook/).
+
+The patterns that Spell Hunter is searching for are various bytes that might be useful for research, including
+patterns related to software exploits, vulnerabilities, malware, as well as useful items for reverse engineering.
+
+There is a singular function named "hunt" in this module that searches a given file for all of the "interesting" bytes,
+outputing JSON with the file name, UTC time, along with any patterns matched and the byte positions in the file of those patterns.
+
+An example ELF file will have the "elf_magic" pattern found:
+
+```
+{
+  "File": "/usr/bin/avahi-publish",
+  "Report time": "2026-01-28 06:04:33.710910326 UTC",
+  "Matched patterns": [
+    {
+      "Pattern name": "elf_magic",
+      "Byte offset": [0]
+    }
+  ]
+}
+
+```
+
+Here is another example JSON of a normal file that has more interesting bytes:
+
+```
+{
+  "File": "/usr/bin/busybox",
+  "Report time": "2026-01-28 06:05:50.842018625 UTC",
+  "Matched patterns": [
+    {
+      "Pattern name": "pe_magic",
+      "Byte offset": [805278, 805314]
+    },
+    {
+      "Pattern name": "elf_magic",
+      "Byte offset": [0]
+    },
+    {
+      "Pattern name": "gzip_magic",
+      "Byte offset": [447791]
+    },
+    {
+      "Pattern name": "zip_magic_local",
+      "Byte offset": [459675]
+    },
+    {
+      "Pattern name": "zip_magic_central",
+      "Byte offset": [459645]
+    },
+    {
+      "Pattern name": "zip_magic_end",
+      "Byte offset": [459786]
+    },
+    {
+      "Pattern name": "bin_sh_use",
+      "Byte offset": [756212, 756513, 784805]
+    },
+    {
+      "Pattern name": "shadow_access",
+      "Byte offset": [696275]
+    },
+    {
+      "Pattern name": "passwd_access",
+      "Byte offset": [696263]
+    }
+  ]
+}
+```
+
+All matches are _just known pattern matches_, not conclusions. The tool is an aide to research, it doesn't do the research for you.
+
+## Installation
+
+Install with `pip`:
+
+```
+pip install spell_hunter
+```
+
+Or `uv`:
+
+```
+uv add spell_hunter
+```
+
+Alternatively, compile the wheel from source and install the wheel directly.
+
+```
+maturin build
+...
+uv pip install target/wheels/spell_hunter-0.1.0-cp313-cp313-manylinux_2_34_x86_64.whl
+
+```
+
+
+#### Example usage
+
+Let's start with a simple use of loading a hard-coded file and playing with the JSON:
+
+```
+import spell_hunter
+import json
+
+def main():
+    hunter = spell_hunter.hunt('/bin/ls')
+    a = json.loads(hunter)
+    print(a['File'], "was the file")
+    print("reported at", a['Report time'])
+    print("which the matches of", a['Matched patterns'])
+
+if __name__ == "__main__":
+    main()
+
+```
+
+Next let's look at an example of taking command line arguments and investigating each file provided:
+
+```
+import spell_hunter
+import json
+import sys
+
+def main():
+    for arg in sys.argv[1:]:
+        print(json.loads(spell_hunter.hunt(arg)))
+
+if __name__ == "__main__":
+    main()
+
+```
+
+When we execute this latest example, we get output like this:
+
+```
+.venv/bin/python3.13 main.py /bin/uptime /bin/bash /bin/sh /usr/local/bin/enchant
+{'File': '/bin/uptime', 'Report time': '2026-01-28 05:59:05.859766527 UTC', 'Matched patterns': [{'Pattern name': 'elf_magic', 'Byte offset': [0]}]}
+{'File': '/bin/bash', 'Report time': '2026-01-28 05:59:06.643373702 UTC', 'Matched patterns': [{'Pattern name': 'elf_magic', 'Byte offset': [0]}, {'Pattern name': 'bin_sh_use', 'Byte offset': [204386, 204545]}]}
+{'File': '/bin/sh', 'Report time': '2026-01-28 05:59:06.722365909 UTC', 'Matched patterns': [{'Pattern name': 'elf_magic', 'Byte offset': [0]}, {'Pattern name': 'bin_sh_use', 'Byte offset': [98562]}]}
+{'File': '/usr/local/bin/enchant', 'Report time': '2026-01-28 05:59:07.038956316 UTC', 'Matched patterns': [{'Pattern name': 'elf_magic', 'Byte offset': [0, 98913]}]}
+
+```
+
+Let's use another variation, this time keeping the output as the original JSON for each argument file:
+
+```
+import spell_hunter
+import json
+import sys
+
+def main():
+    for arg in sys.argv[1:]:
+        print(spell_hunter.hunt(arg))
+
+if __name__ == "__main__":
+    main()
+
+```
+
+And when we run that:
+
+```
+.venv/bin/python3.13 main.py /bin/uptime /bin/bash /bin/sh /usr/local/bin/enchant
+{
+  "File": "/bin/uptime",
+  "Report time": "2026-01-28 07:41:14.917662092 UTC",
+  "Matched patterns": [
+    {
+      "Pattern name": "elf_magic",
+      "Byte offset": [0]
+    }
+  ]
+}
+{
+  "File": "/bin/bash",
+  "Report time": "2026-01-28 07:41:15.098475373 UTC",
+  "Matched patterns": [
+    {
+      "Pattern name": "elf_magic",
+      "Byte offset": [0]
+    },
+    {
+      "Pattern name": "bin_sh_use",
+      "Byte offset": [204386, 204545]
+    }
+  ]
+}
+{
+  "File": "/bin/sh",
+  "Report time": "2026-01-28 07:41:15.119242895 UTC",
+  "Matched patterns": [
+    {
+      "Pattern name": "elf_magic",
+      "Byte offset": [0]
+    },
+    {
+      "Pattern name": "bin_sh_use",
+      "Byte offset": [98562]
+    }
+  ]
+}
+{
+  "File": "/usr/local/bin/enchant",
+  "Report time": "2026-01-28 07:41:15.187756273 UTC",
+  "Matched patterns": [
+    {
+      "Pattern name": "elf_magic",
+      "Byte offset": [0, 98913]
+    }
+  ]
+}
+```
+
+If we send invalid input to the hunt function, we'll get back JSON with an error:
+
+```
+.venv/bin/python3.13 main.py /bin/uptime -1
+{
+  "File": "/bin/uptime",
+  "Report time": "2026-01-28 07:37:59.756211114 UTC",
+  "Matched patterns": [
+    {
+      "Pattern name": "elf_magic",
+      "Byte offset": [0]
+    }
+  ]
+}
+{ "ERROR": "Invalid input" }
+```
+
+Rather than just printing out JSON like that, we more likely would want to write out to files or do something fancier with the data.
+
+Let's illustrate a more complex example with storing the data in sqlite and creating a report visualizing the files.
+
+```
+import spell_hunter
+import sqlite3
+import uuid
+from datetime import datetime
+from functools import reduce
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from collections import defaultdict
+import numpy as np
+import json
+import sys
+import os
+
+def timeslice():
+    global TIMESTAMP
+    TIMESTAMP = datetime.now()
+    return(TIMESTAMP)
+
+def createtable():
+    C.execute('''CREATE TABLE hunter
+                        (TIME text, FILE text, PATTERNS text)''')
+def hunting(FILE):
+    h = json.loads(spell_hunter.hunt(FILE))
+    global TIME
+    TIME = h['Report time']
+    global PATTERNS
+    PATTERNS = json.dumps(h['Matched patterns'])
+    #print(json.dumps(h['Matched patterns']))
+
+def insertstat(TXID, FILE):
+    try:
+        sqlite_insert_with_param = """INSERT INTO hunter
+                                            (TIME, FILE, PATTERNS)
+                                            VALUES (?, ?, ?);"""
+        hunting(FILE)
+        TIMESTAMP = timeslice()
+        timeslice()
+        print(TIMESTAMP, TXID, " hunter-demo: inserting ", FILE)
+        data_tuple = (TIME, FILE, PATTERNS)
+        C.execute(sqlite_insert_with_param, data_tuple)
+        CONN.commit()
+    except sqlite3.Error as error:
+        timeslice()
+        print(TIMESTAMP, TXID, " hunter-demo: Failed to insert into hunter.db FILE table:", error)
+
+def main():
+    try:
+        os.remove('hunter.db')
+    except OSError:
+        pass
+    global CONN
+    global C
+    CONN = sqlite3.connect('hunter.db')
+    C = CONN.cursor()
+    createtable()
+
+    for arg in sys.argv[1:]:
+        global TXID
+        TXID = uuid.uuid4()
+        insertstat(TXID, arg)
+
+    C.execute("SELECT TIME, FILE, PATTERNS FROM hunter")
+    rows = C.fetchall()
+    first_timestamp = rows[0][0] if rows else "No data"
+    file_patterns = defaultdict(set)
+
+    for time, file_path, patterns_json in rows:
+        patterns = json.loads(patterns_json)
+        file_name = file_path.split('/')[-1]
+
+        for pattern_dict in patterns:
+            pattern_name = pattern_dict.get("Pattern name")
+            if pattern_name:
+                file_patterns[file_name].add(pattern_name)
+
+    all_patterns = sorted(set(pattern for patterns in file_patterns.values() for pattern in patterns))
+    all_files = sorted(file_patterns.keys())
+    matrix = np.zeros((len(all_files), len(all_patterns)))
+
+    for i, file_name in enumerate(all_files):
+        for j, pattern in enumerate(all_patterns):
+            if pattern in file_patterns[file_name]:
+                matrix[i][j] = 1
+    fig, ax = plt.subplots(figsize=(max(12, len(all_patterns) * 0.8), max(8, len(all_files) * 0.5)))
+    cax = ax.imshow(matrix, cmap='YlOrRd', aspect='auto', interpolation='nearest')
+    ax.set_xticks(np.arange(len(all_patterns)))
+    ax.set_yticks(np.arange(len(all_files)))
+    ax.set_xticklabels(all_patterns, rotation=45, ha='right', fontsize=9)
+    ax.set_yticklabels(all_files, fontsize=9)
+    ax.set_xticks(np.arange(len(all_patterns)) - 0.5, minor=True)
+    ax.set_yticks(np.arange(len(all_files)) - 0.5, minor=True)
+    ax.grid(which='minor', color='gray', linestyle='-', linewidth=0.5)
+    ax.set_xlabel('Pattern Names', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Files', fontsize=12, fontweight='bold')
+    ax.set_title('Pattern Detection Across Files', fontsize=14, fontweight='bold', pad=20)
+    info_text = f'First Scan Time: {first_timestamp}\nTotal Files: {len(all_files)}\nUnique Patterns: {len(all_patterns)}'
+    props = dict(boxstyle='round', facecolor='lightblue', alpha=0.8)
+    ax.text(0.02, 0.98, info_text, transform=fig.transFigure, fontsize=10,
+            verticalalignment='top', bbox=props)
+    cbar = plt.colorbar(cax, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_ticks([0, 1])
+    cbar.set_ticklabels(['Not Found', 'Found'])
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    output_path = 'hunter_patterns_visualization.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    print(f"Visualization saved to: {output_path}")
+    print(f"\n=== Summary ===")
+    print(f"First scan time: {first_timestamp}")
+    print(f"Total files scanned: {len(all_files)}")
+    print(f"Unique patterns detected: {len(all_patterns)}")
+    print(f"\nPattern frequency:")
+    for pattern in all_patterns:
+        count = sum(1 for file_patterns_set in file_patterns.values() if pattern in file_patterns_set)
+        print(f"  {pattern}: found in {count} file(s)")
+
+    if (CONN):
+        CONN.close()
+        timeslice()
+        print(TIMESTAMP, TXID, " hunter-demo: The DB CONNection is now closed.")
+
+
+if __name__ == "__main__":
+    main()
+
+```
+
+Then when running our latest example, we can get output like this:
+
+```
+.venv/bin/python3.13 main.py /bin/uptime /bin/bash /bin/sh /usr/local/bin/enchant /usr/bin/X /usr/bin/clang /usr/bin/apt-mark /bin/firefox-esr /bin/curl
+2026-01-28 04:10:39.258996 b7fa84a5-e4b1-4567-9e5b-1c1b7618379b  hunter-demo: inserting  /bin/uptime
+2026-01-28 04:10:39.480018 3988f2da-873c-4bd8-ae49-9669fda60c29  hunter-demo: inserting  /bin/bash
+2026-01-28 04:10:39.655655 93a7d7e8-8444-4de6-96de-028173acaf24  hunter-demo: inserting  /bin/sh
+2026-01-28 04:10:39.802700 2b1144d7-ae9e-4acc-ac96-adcd5e91ca19  hunter-demo: inserting  /usr/local/bin/enchant
+2026-01-28 04:10:39.841773 a3e32fc7-444f-41fb-848d-93d0c88aac57  hunter-demo: inserting  /usr/bin/X
+2026-01-28 04:10:39.904944 83f43ccd-03c8-4e53-ab48-84aa54541759  hunter-demo: inserting  /usr/bin/clang
+2026-01-28 04:10:39.951992 66e1e999-6c4f-49d1-a8c0-0b11386278cd  hunter-demo: inserting  /usr/bin/apt-mark
+2026-01-28 04:10:40.078290 7c128646-616e-4975-9dab-6bca19d0e02c  hunter-demo: inserting  /bin/firefox-esr
+2026-01-28 04:10:40.169208 a4bfc004-35e6-48ac-a6d6-da580ce6d98f  hunter-demo: inserting  /bin/curl
+Visualization saved to: hunter_patterns_visualization.png
+
+=== Summary ===
+First scan time: 2026-01-28 09:10:39.258927893 UTC
+Total files scanned: 9
+Unique patterns detected: 4
+
+Pattern frequency:
+  bin_sh_use: found in 3 file(s)
+  elf_magic: found in 8 file(s)
+  gzip_magic: found in 1 file(s)
+  pe_magic: found in 1 file(s)
+2026-01-28 04:10:41.187847 a4bfc004-35e6-48ac-a6d6-da580ce6d98f  hunter-demo: The DB CONNection is now closed.
+```
+
+And then we can open the image file and use it in a report or investigation.
+
+```
+open hunter_patterns_visualization.png
+```
+
+The sqlite database file could of course also then be saved for later use.
+
