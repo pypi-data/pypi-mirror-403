@@ -1,0 +1,173 @@
+Metadata-Version: 2.4
+Name: gtaxoprop
+Version: 1.0.post3
+Summary: A utility to generate input files for taxonomy propagation and assignment in QIIME/QIIME2 from the NCBI database
+Home-page: https://gitlab.com/biomikalab/GTAXOPROP
+Author: Maulana Malik Nashrulloh, Sonia Az Zahra Defi, Brian Rahardi, Muhammad Badrut Tamam, Riki Ruhimat, Hessy Novita
+Author-email: maulana@genbinesia.or.id
+License: GPLv3
+Project-URL: Bug Reports, https://gitlab.com/biomikalab/GTAXOPROP/issues
+Project-URL: Source, https://gitlab.com/biomikalab/GTAXOPROP
+Project-URL: Documentation, https://gitlab.com/biomikalab/GTAXOPROP#readme
+Keywords: bioinformatics,taxonomy,ncbi,qiime,qiime2,microbiome,microbiology,genomics
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: License :: OSI Approved :: GNU General Public License v3 (GPLv3)
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Scientific/Engineering :: Bio-Informatics
+Classifier: Intended Audience :: Science/Research
+Classifier: Natural Language :: English
+Classifier: Development Status :: 5 - Production/Stable
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: tinydb==4.8.2
+Requires-Dist: pbr>=6.1.1
+Requires-Dist: stevedore>=5.5.0
+Requires-Dist: cogent3>=2025.9.8a2
+Requires-Dist: biopython>=1.85
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: license
+Dynamic: project-url
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# GTAXOPROP (Genbinesia Taxonomy Propagator)
+
+![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.post3-green.svg)
+
+**GTAXOPROP** is a utility to generate input files for taxonomy propagation and assignment in QIIME/QIIME2 from the NCBI database. It converts NCBI accession numbers to QIIME/QIIME2-compatible taxonomy files with API fallback.
+
+# ⚠️ Derivative Work Notice
+
+GTAXOPROP is a **derivative work** based on `entrez_qiime` v2.0 by Christopher C. M. Baker.
+This version includes substantial modifications and enhancements while maintaining GPL v3 compliance.
+
+**Original work:** Baker, C.C.M. (2016). entrez_qiime. v2.0. https://github.com/bakerccm/entrez_qiime
+
+# Major Enhancements from Original
+- ✅ Complete Python 3 migration
+- ✅ cogent3 integration (replaced PyCogent)
+- ✅ Better NCBI Entrez communication using Biopython 
+- ✅ Advanced caching with resume capability
+- ✅ Batch API processing with rate limiting
+- ✅ Improved error handling and logging
+- ✅ Enhanced file encoding detection
+- ✅ Better taxonomy rank handling
+
+# Authors
+- Maulana Malik Nashrulloh (Division of Biomics Research, Department of Sciences, Generasi Biologi Indonesia Foundation)
+- Sonia Az Zahra Defi (Department of Biology, Faculty of Mathematics and Natural Sciences, Brawijaya University)
+- Brian Rahardi (Department of Bioinformatics, Faculty of Mathematics and Natural Sciences, Brawijaya University)
+- Muhammad Badrut Tamam (Division of Biomics Research, Department of Sciences, Generasi Biologi Indonesia Foundation & Biology Program, Faculty of Science, Technology, and Education, Muhammadiyah University of Lamongan)
+- Riki Ruhimat (Research Center for Applied Microbiology, Research Organization for Life Sciences, National Research and Innovation Agency)
+- Hessy Novita (Research Center for Veterinary Science, Research Organization for Health, National Research and Innovation Agency)
+
+# Quick Start
+
+## Dependencies
+
+Make sure that your system have Python >=3.10 installed and these packages/libraries installed:
+
+- tinydb==4.8.2
+- pbr>=6.1.1
+- stevedore>=5.5.0
+- cogent3>=2025.9.8a2
+- biopython>=1.85
+
+## Installation
+Currently we only support installation thru `pip` command only.
+
+```bash
+pip install gtaxoprop
+```
+
+## Usage
+To use this program, you must have NCBI taxdump and accession2taxid data
+
+- taxdump.tar.gz (https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz). This tarball contains files that constitute the full NCBI taxonomy database, primarily used for local installations and bioinformatics tools that require taxonomic information
+- nucl_gb.accession2taxid.gz (https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/accession2taxid/nucl_gb.accession2taxid.gz). This file store TaxID mapping for live nucleotide sequence records of type WGS or TSA.
+- nucl_wgs.accession2taxid.gz (https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/accession2taxid/nucl_wgs.accession2taxid.gz). This file store TaxID mapping for live nucleotide sequence records that are not WGS or TSA.
+
+Unpacked content of nucl_gb.accession2taxid.gz and nucl_wgs.accession2taxid.gz respectively is very huge! (Spending 10 GB+ and 40 GB+ space respectively, manage your disk space accordingly!). Alternatively, you may choose only one, nucl_gb.accession2taxid.gz or nucl_wgs.accession2taxid.gz one, but this may will not cover entirety of your data.
+
+Assumed that you have enough free space of 100-150 GB+ at your ~ (/home/username/), run this command one-by-one to set up your data:
+
+```bash
+cd ~
+mkdir ~/path/to/your/NCBI/taxdump
+cd ~/path/to/your/NCBI/taxdump
+wget ftp://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz
+tar -zxvf taxdump.tar.gz
+mkdir ~/path/to/your/NCBI/accession2taxid
+cd ~/path/to/your/NCBI/accession2taxid
+wget ftp://ftp.ncbi.nlm.nih.gov/pub/taxonomy/accession2taxid/nucl_gb.accession2taxid.gz
+gunzip nucl_gb.accession2taxid.gz
+wget ftp://ftp.ncbi.nlm.nih.gov/pub/taxonomy/accession2taxid/nucl_wgs.accession2taxid.gz
+gunzip nucl_wgs.accession2taxid.gz
+cp nucl_gb.accession2taxid nucl_merged.accession2taxid
+tail -n+2 nucl_wgs.accession2taxid >> nucl_merged.accession2taxid
+rm nucl_gb.accession2taxid nucl_wgs.accession2taxid
+```
+
+For propagating taxonomy of Archaea, Bacteria, and Eukaryota:
+
+```bash
+gtaxoprop -i ~/path/to/your/your_sequences.fasta \
+          -o ~/path/to/your/your_taxdumps.txt \
+          -g ~/path/to/your/your_execution.log \
+          -n ~/path/to/your/NCBI/taxdump/ \
+          -a ~/path/to/your/NCBI/accession2taxid/nucl_merged.accession2taxid \
+          -r domain,kingdom,phylum,class,order,family,genus,species \
+          -d \
+          --email your_mail@email.xxx
+```
+
+For propagating taxonomy of Virus:
+
+```bash
+gtaxoprop -i ~/path/to/your/your_sequences.fasta \
+          -o ~/path/to/your/your_taxdumps.txt \
+          -g ~/path/to/your/your_execution.log \
+          -n ~/path/to/your/NCBI/taxdump/ \
+          -a ~/path/to/your/NCBI/accession2taxid/nucl_merged.accession2taxid \
+          -r realm,kingdom,phylum,class,order,family,genus,species \
+          -d \
+          --email your_mail@email.xxx
+```
+
+## Help
+To access the help, use:
+
+```bash
+gtaxoprop -h
+```
+
+# Acknowledgments
+- This program is based on entrez_qiime Version 2.0 by Chris Baker (https://github.com/bakerccm/entrez_qiime)
+- Part of this program was presented at 4th International Conference on Biological Sciences (ICoBioS 2025) (https://www.icobios.org/)
+- This program was made as part of research mini-project "In silico metagenomic assessment of aCPSF1 phylogenetic marker for the identification and classification of archaea using publicly available Metagenomic Whole-genome Shotgun Sequencing data" funded internally by Generasi Biologi Indonesia Foundation.
+
+# Citation
+A dedicated publication for this program is not yet available. For citation purposes, please refer to the following technical report:
+
+Nashrulloh, M.M., Defi, S.A.Z., Rahardi, B., Tamam, Mh. B., Ruhimat, R., & Novita, H. (2025). *GTAXOPROP: A utility to generate input files for taxonomy propagation and assignment in QIIME/QIIME2 from the NCBI database* (Technical Report No. GBR-TR-BIOMIKA-01/Genbinesia/IX/2025). Generasi Biologi Indonesia Foundation. Gresik, Indonesia.
+
+If you wish to cite this repository, you may use the following APA-style reference entry:
+
+Nashrulloh, M.M., Defi, S.A.Z., Rahardi, B., Tamam, Mh. B., Ruhimat, R., & Novita, H. (2025). GTAXOPROP: A utility to generate input files for taxonomy propagation and assignment in QIIME/QIIME2 from the NCBI database (Version 1.0.post3) [Computer software]. https://gitlab.com/biomikalab/GTAXOPROP
+
+# License
+This project is licensed under the GNU General Public License v3.0 - See the LICENSE file for details.
