@@ -1,0 +1,109 @@
+# pkgmgr
+
+패키지 관리/배포 워크플로를 위한 Python 패키지입니다. 현재는 패키지 단위 관리와 릴리스 번들링에 초점을 둔 초기 버전입니다.
+
+## 디자인/Use case
+- 흐름 요약과 Mermaid 시퀀스 다이어그램은 [`design/mermaid/use-cases.md`](design/mermaid/use-cases.md)에 있습니다.
+- 주 명령별 설정/동작 요약과 make-config/install/create-pkg/update-pkg/close-pkg 시퀀스를 포함합니다.
+
+## 구성
+- `pkgmgr/cli.py` : CLI 엔트리 (아래 명령어 참조)
+- `pkgmgr/config.py` : `pkgmgr.yaml` / `pkg.yaml` 템플릿 생성 및 로더 (PyYAML 필요)
+- `pkgmgr/snapshot.py`, `pkgmgr/release.py`, `pkgmgr/watch.py` : 스냅샷/패키지 수명주기/감시/릴리스 번들
+- `pkgmgr/collectors/` : 컬렉터 인터페이스 및 체크섬 컬렉터 스텁
+- 템플릿: `pkgmgr/templates/pkgmgr.yaml.sample`, `pkgmgr/templates/pkg.yaml.sample`
+
+## 필요 사항
+- Python 3.6 이상
+- 의존성(PyYAML 등)은 `pip install pkgmgr-kunrunic` 시 자동 설치됩니다.
+
+## 설치 (PyPI/로컬)
+- PyPI(권장): `python -m pip install pkgmgr-kunrunic` (또는 `pipx install pkgmgr-kunrunic`으로 전역 CLI 설치).
+- 로컬/개발: 리포지토리 클론 후 `python -m pip install .` 또는 빌드 산출물(`dist/pkgmgr_kunrunic-<버전>-py3-none-any.whl`)을 `python -m pip install dist/<파일>`로 설치.
+- 확인: `pkgmgr --version` 혹은 `python -m pkgmgr.cli --version`.
+
+## 기본 사용 흐름
+아래 명령은 `pkgmgr ...` 또는 `python -m pkgmgr.cli ...` 형태로 실행합니다.  
+설정 파일 기본 위치는 `~/pkgmgr/pkgmgr.yaml`이며, `~/pkgmgr/pkgmgr*.yaml`과 `~/pkgmgr/config/pkgmgr*.yaml`을 자동 탐색합니다(여러 개면 선택 필요, `--config`로 강제 지정 가능). 상태/릴리스 데이터는 `~/pkgmgr/local/state` 아래에 기록됩니다.
+
+### 1) make-config — 메인 설정 템플릿 생성
+```
+pkgmgr make-config
+pkgmgr make-config -o ~/pkgmgr/config/pkgmgr-alt.yaml  # 위치 지정 가능
+```
+편집할 주요 필드: `pkg_release_root`, `sources`, `source.exclude`, `artifacts.targets/exclude`, `git.keywords/repo_root`, `collectors.enabled`, `actions`.
+
+### 2) install — PATH/alias 등록 + 초기 baseline(한 번만)
+```
+pkgmgr install [--config <path>]
+```
+- 사용 쉘을 감지해 rc 파일에 PATH/alias 추가.
+- `~/pkgmgr/local/state/baseline.json`이 없을 때만 초기 스냅샷 생성(있으면 건너뜀).
+
+### 3) create-pkg — 패키지 디렉터리/설정 생성
+```
+pkgmgr create-pkg <pkg-id> [--config <path>]
+```
+- `<pkg_release_root>/<pkg-id>/pkg.yaml`을 실제 값으로 채워 생성(기존 파일이 있으면 덮어쓰기 여부 확인).
+- 메인 설정의 `git.keywords/repo_root`, `collectors.enabled`를 기본값으로 반영.
+- baseline이 없는 경우에만 baseline 생성.
+
+### 4) update-pkg — Git/체크섬 수집 + 릴리스 번들 생성
+```
+pkgmgr update-pkg <pkg-id> [--config <path>]
+```
+- 최신 릴리스 종료/아카이브: `pkgmgr update-pkg <pkg-id> --release` (tar 생성 후 `HISTORY/`로 이동).
+- Git: `git.repo_root`(상대/절대)에서 `git.keywords` 매칭 커밋을 모아 `message/author/subject/files/keywords` 저장.
+- 체크섬: 키워드에 걸린 파일 + `include.releases` 경로의 파일 해시 수집.
+- 릴리스 번들: `include.releases` 최상위 디렉터리별로 `release/<root>/release.vX.Y.Z/`를 생성. `--release` 전까지는 최신 버전을 유지하며 변경분만 추가/덮어쓰기/삭제 반영(버전 증가 없음), 이전 버전과 해시가 동일한 파일은 스킵. 각 릴리스 폴더에 `PKG_NOTE`(1회 생성, 사용자 내용 유지)와 `PKG_LIST`(매번 갱신) 작성.
+- 실행 결과는 `~/pkgmgr/local/state/pkg/<id>/updates/update-<ts>.json`에 기록(`git`, `checksums`, `release` 메타 포함).
+
+### 5) actions — 외부 작업 실행
+```
+pkgmgr actions
+pkgmgr --config <path> actions <name> [args...]
+```
+- 설정의 `actions`에 등록된 작업 목록을 출력하거나, 지정한 작업을 실행합니다.
+- `<name>` 뒤의 모든 인자는 액션 커맨드에 그대로 전달됩니다.
+- 예: `pkgmgr --config ~/pkgmgr/pkgmgr.yaml actions export_cksum --root R --time 4`
+- 예: `pkgmgr --config ~/pkgmgr/pkgmgr.yaml actions export_cksum --pkg-dir /path/to/pkg --excel /path/to/template.xlsx`
+
+## PATH/alias 자동 추가
+- PyPI/로컬 설치 후 `python -m pkgmgr.cli install`을 실행하면 현재 파이썬의 `bin` 경로(예: venv/bin, ~/.local/bin 등)를 감지해 사용 중인 쉘의 rc 파일에 PATH/alias를 추가합니다.
+- 지원 쉘: bash(`~/.bashrc`), zsh(`~/.zshrc`), csh/tcsh(`~/.cshrc`/`~/.tcshrc`), fish(`~/.config/fish/config.fish`).
+- 추가 내용:
+  - PATH: `export PATH="<script_dir>:$PATH"` 또는 쉘별 동등 구문
+  - alias: `alias pkg="pkgmgr"` (csh/fish 문법 사용)
+- 이미 추가된 경우(marker로 확인) 중복 삽입하지 않습니다. rc 파일이 없으면 새로 만듭니다.
+
+## 템플릿 개요
+- `pkgmgr/templates/pkgmgr.yaml.sample` : 메인 설정 샘플  
+  - `pkg_release_root`: 패키지 릴리스 루트  
+  - `sources`: 관리할 소스 경로 목록  
+  - `source.exclude`: 소스 스캔 제외 패턴 (glob 지원)  
+  - `artifacts.targets` / `artifacts.exclude`: 배포 대상 포함/제외 규칙 (glob 지원: `tmp/**`, `*.bak`, `**/*.tmp` 등)  
+  - `watch.interval_sec`: 감시 폴링 주기(향후 노출 예정)  
+  - `watch.on_change`: 변경 시 실행할 action 이름 리스트(향후 노출 예정)  
+  - `collectors.enabled`: 기본 활성 컬렉터(향후 확장 예정)
+  - `actions`: action 이름 → 실행할 커맨드 목록 (각 항목에 `cmd` 필수, `cwd`/`env` 선택)
+
+- `pkgmgr/templates/pkg.yaml.sample` : 패키지별 설정 샘플  
+  - `pkg.id` / `pkg.root` / `pkg.status(open|closed)`  
+  - `include.releases`: 릴리스에 포함할 경로(최상위 디렉터리별로 묶여 `release/<root>/release.vX.Y.Z` 생성)  
+  - `git.repo_root/keywords/since/until`: 커밋 수집 범위  
+  - `collectors.enabled`: 패키지별 컬렉터 설정
+
+## 주의
+- 시스템 전체 관리(감시/수집/포인트) 기능은 아직 확장 단계입니다. 추후 단계적으로 구현/교체 예정입니다.
+
+## 확장성 가이드
+- `actions`를 기본 확장 포인트로 사용합니다. 배포/내보내기/알림 등은 액션으로 위임하는 것을 권장합니다.
+- 릴리스 번들 포맷(`release/<root>/release.vX.Y.Z/`, `PKG_LIST`, `PKG_NOTE`)은 외부 도구와의 연동 기준점으로 사용합니다.
+- `~/pkgmgr/local/state/pkg/<id>/updates/update-<ts>.json`은 자동화 파이프라인에서 읽을 수 있는 결과물로 취급합니다.
+- 전역 수집/집계는 `collectors` 확장으로 흡수할 계획이며, CLI로 노출하기 전까지는 내부 확장용으로 유지합니다.
+
+## TODO (우선순위)
+- 감시/포인트 고도화: watchdog/inotify 연동, diff 결과를 포인트 메타에 기록, 에러/로그 처리.
+- baseline/릴리스 알림: baseline 대비 변경 감지 시 알림/확인 흐름 추가(README/README.txt TODO 반영).
+- 컬렉터 파이프라인: 체크섬 외 collector 등록/선택/실행 로직, include 기준 실행, 정적/동적/EDR/AV 훅 자리 마련.
+- 테스트/CI: watch diff/포인트/라이프사이클 단위 테스트 추가, pytest/CI 스크립트 보강.
