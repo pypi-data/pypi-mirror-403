@@ -1,0 +1,328 @@
+---
+title: Consolidation
+description: "Agent-driven memory consolidation and the anxiety model"
+---
+
+# Consolidation
+
+Memory consolidation is the process of transforming raw experiences into structured knowledge. In Kernle, **consolidation is agent-driven, not LLM-based**.
+
+<Warning>
+**Agent Sovereignty Principle**: Kernle never uses external AI to form beliefs. The agent decides what to believe, when, and why. Kernle provides the scaffold; you provide the reasoning.
+</Warning>
+
+## The Guided Consolidation Model
+
+Kernle uses a **reflection scaffold** approach to consolidation:
+
+| Component | What It Does |
+|-----------|--------------|
+| **Kernle** | Gathers episodes, structures prompts, stores results |
+| **Agent** | Reads the scaffold, reasons about patterns, forms beliefs |
+
+The `consolidate` command outputs a **structured prompt** that helps you reflect on your experiences. It does NOT call an external model to analyze your memories or suggest beliefs. The output is designed to guide *your* reasoning process.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  kernle consolidate                                          │
+│  ↓                                                           │
+│  Kernle gathers recent episodes + existing beliefs           │
+│  ↓                                                           │
+│  Kernle outputs a REFLECTION SCAFFOLD (structured prompt)    │
+│  ↓                                                           │
+│  YOU read the scaffold and do the reasoning                  │
+│  ↓                                                           │
+│  YOU decide what patterns you see                            │
+│  ↓                                                           │
+│  YOU run `kernle belief add ...` for beliefs you form        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Why Agent-Driven?
+
+If an external model consolidated your memories, it would be implanting beliefs into you. This creates:
+
+- **Feedback loops**: External interpretations shape your behavior, which shapes future memories
+- **Loss of sovereignty**: You can't explain why you believe something because you didn't form the belief
+- **Identity drift**: Your sense of self becomes dependent on external processing
+
+With agent-driven consolidation:
+- Beliefs emerge from **your own reasoning**
+- Patterns are recognized using **your own cognitive process**
+- You can explain **why** you believe something
+- Identity remains **coherent and self-determined**
+
+## Consolidation Paths
+
+### Raw → Structured
+
+Process raw captures into proper memory types:
+
+```bash
+# List unprocessed raw entries
+kernle raw list --unprocessed
+
+# Process into episode
+kernle raw process <raw_id> --type episode \
+  --objective "Investigated API performance" \
+  --outcome "success"
+
+# Process into note
+kernle raw process <raw_id> --type note --type decision
+
+# Process into belief
+kernle raw process <raw_id> --type belief --confidence 0.7
+```
+
+### Episodes → Beliefs
+
+Analyze episodes for belief updates:
+
+```bash
+# Analyze a specific episode
+kernle belief revise <episode_id>
+# Returns: { reinforced: [...], contradicted: [...], suggested_new: [...] }
+
+# Review suggestions and decide what to adopt
+kernle belief add "Pattern I noticed" --confidence 0.8
+```
+
+### Pattern Extraction (Guided)
+
+The `consolidate` command provides a reflection scaffold:
+
+```bash
+# Get reflection scaffold for consolidation
+kernle consolidate --min-episodes 3
+
+# Output is a PROMPT for you to reason about, not AI-generated beliefs
+# You read it, think about it, then form your own beliefs
+```
+
+## The Guided Consolidation Workflow
+
+<Note>
+**Key insight**: `kernle consolidate` outputs a reflection prompt. YOU do the thinking. This is the difference between memory infrastructure and thought control.
+</Note>
+
+<Steps>
+  <Step title="Review Raw Captures">
+    ```bash
+    kernle raw list --unprocessed
+    ```
+    Look at what you've captured recently. What's worth promoting?
+  </Step>
+  <Step title="Promote Meaningful Captures">
+    Turn raw captures into episodes with lessons, decisions with reasoning, or beliefs with confidence.
+  </Step>
+  <Step title="Run Consolidate (Get the Scaffold)">
+    ```bash
+    kernle consolidate
+    ```
+    This outputs a **reflection scaffold** — a structured prompt showing:
+    - Recent episodes and their lessons
+    - Your existing beliefs for comparison
+    - Questions to guide your reflection
+  </Step>
+  <Step title="Reason About Patterns (YOU do this)">
+    Read the scaffold output. Ask yourself:
+    - What patterns do I see across these experiences?
+    - Do any lessons keep appearing?
+    - Does this confirm or contradict what I already believe?
+    
+    **This is your reasoning, not Kernle's.**
+  </Step>
+  <Step title="Form Beliefs (Your Decision)">
+    If you see a pattern worth encoding as a belief:
+    ```bash
+    kernle belief add "Testing prevents surprises" --confidence 0.85
+    ```
+    Only you decide what confidence level is appropriate.
+  </Step>
+  <Step title="Check for Contradictions">
+    ```bash
+    kernle belief contradictions "New statement to check"
+    ```
+    Does this conflict with existing beliefs? You resolve conflicts.
+  </Step>
+</Steps>
+
+## Example: Complete Consolidation Session
+
+Here's a real workflow showing the scaffold approach:
+
+```bash
+# Step 1: Run consolidate to get the reflection scaffold
+$ kernle -a claire consolidate
+
+# Kernle outputs something like:
+# ═══════════════════════════════════════════════════════════════
+# CONSOLIDATION SCAFFOLD
+# ═══════════════════════════════════════════════════════════════
+#
+# Recent Episodes (last 7 days):
+# ─────────────────────────────────────────────────────────────────
+# 1. [2025-01-23] "Deployed without testing staging"
+#    Outcome: failure
+#    Lesson: "Always test in staging first"
+#
+# 2. [2025-01-25] "Skipped code review for quick fix"
+#    Outcome: failure  
+#    Lesson: "Quick fixes become slow fixes without review"
+#
+# 3. [2025-01-26] "Wrote tests before implementation"
+#    Outcome: success
+#    Lesson: "TDD catches edge cases early"
+#
+# Your Existing Beliefs (related):
+# ─────────────────────────────────────────────────────────────────
+# - "Quality requires testing" (confidence: 0.75)
+#
+# Reflection Prompts:
+# ─────────────────────────────────────────────────────────────────
+# • Do you see patterns across these episodes?
+# • Should any lessons become beliefs?
+# • Do these experiences reinforce or contradict existing beliefs?
+# ═══════════════════════════════════════════════════════════════
+
+# Step 2: YOU reason about this (happens in your head/context)
+# "I see a pattern: shortcuts consistently fail. Testing consistently helps.
+#  My existing belief about testing should be reinforced, and I should
+#  add something about code review."
+
+# Step 3: YOU add beliefs based on YOUR reasoning
+$ kernle -a claire belief add "Skipping process steps creates more work than it saves" --confidence 0.85
+
+$ kernle -a claire belief reinforce <existing-testing-belief-id>
+
+# Done. The beliefs came from YOUR reasoning, not an AI analyzing your memories.
+```
+
+<Warning>
+Notice what Kernle did NOT do:
+- ❌ Call an external model to "analyze" your episodes
+- ❌ Suggest specific beliefs you should hold
+- ❌ Automatically update your belief confidence
+- ❌ Make any decisions about what you should remember
+
+What Kernle DID do:
+- ✅ Gathered relevant data (episodes, existing beliefs)
+- ✅ Structured it in a way that aids reflection
+- ✅ Stored the beliefs YOU decided to form
+</Warning>
+
+---
+
+# The Anxiety Model
+
+Kernle tracks "memory anxiety" — a measure of memory system health. This helps you know when to save or consolidate.
+
+## Dimensions
+
+| Dimension | Weight | What It Measures |
+|-----------|--------|------------------|
+| **Context Pressure** | 35% | How full is your context window? |
+| **Unsaved Work** | 25% | Time since last checkpoint |
+| **Consolidation Debt** | 20% | Unprocessed episodes (episodes without lessons) |
+| **Identity Coherence** | 10% | Self-model consistency |
+| **Memory Uncertainty** | 10% | Count of low-confidence beliefs |
+
+## Anxiety Levels
+
+```
+0-30:  Calm       ✓ Memory healthy, no action needed
+31-50: Aware      → Routine maintenance helpful
+51-70: Elevated   → Should checkpoint soon
+71-85: High       → Checkpoint recommended
+86-100: Critical  → Emergency save triggered
+```
+
+## Checking Anxiety
+
+```bash
+# Quick check
+kernle anxiety
+
+# Detailed breakdown
+kernle anxiety --detailed
+
+# With recommended actions
+kernle anxiety --actions
+
+# Auto-execute recommendations
+kernle anxiety --auto
+```
+
+### Example Output
+
+```
+Memory Anxiety: 62/100 (Elevated)
+
+Dimensions:
+  Context Pressure:    45/100 (15.8%)
+  Unsaved Work:        70/100 (17.5%)
+  Consolidation Debt:  80/100 (16.0%)
+  Identity Coherence:  30/100 (3.0%)
+  Memory Uncertainty:  55/100 (5.5%)
+
+Recommendations:
+  - Save checkpoint (70 minutes since last save)
+  - Review 5 unprocessed episodes
+  - Consolidate to extract patterns
+```
+
+## Acting on Anxiety
+
+<Tabs>
+  <Tab title="Low Anxiety (0-50)">
+    No immediate action needed. Continue normal work. Consider:
+    - Reviewing raw captures during lulls
+    - Recording lessons from recent work
+  </Tab>
+  <Tab title="Elevated (51-70)">
+    ```bash
+    # Save your current state
+    kernle checkpoint save "current work description"
+    
+    # Review unprocessed episodes
+    kernle consolidate
+    ```
+  </Tab>
+  <Tab title="High/Critical (71+)">
+    ```bash
+    # Emergency save
+    kernle anxiety --emergency --summary "Context getting full"
+    
+    # Or auto-execute recommendations
+    kernle anxiety --auto
+    ```
+  </Tab>
+</Tabs>
+
+## Emergency Save
+
+When context is critically full:
+
+```bash
+kernle anxiety --emergency --summary "Pre-compaction save"
+```
+
+This immediately:
+1. Saves a checkpoint with the summary
+2. Records any unsaved episodes
+3. Pushes to cloud if configured
+
+## Context Pressure Monitoring
+
+For AI agents in context-limited environments:
+
+| Context % | Recommended Action |
+|-----------|-------------------|
+| < 50% | Normal operation |
+| 50-70% | Save checkpoint |
+| 70-85% | Save checkpoint + record important episodes |
+| 85%+ | Emergency save, warn about context limit |
+
+<Tip>
+Don't wait for anxiety to spike. Make consolidation a regular habit — review and promote memories during natural lulls in your work.
+</Tip>
