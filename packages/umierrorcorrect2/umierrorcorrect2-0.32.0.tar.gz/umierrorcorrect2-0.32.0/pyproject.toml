@@ -1,0 +1,166 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+
+
+name = "umierrorcorrect2"
+dynamic = ["version"]
+description = "Pipeline for analyzing barcoded amplicon sequencing data with Unique Molecular Identifiers (UMI)"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Stefan Filges", email = "stefan.filges@pm.me" },
+    { name = "Tobias Osterlund", email = "tobias.osterlund@gu.se" },
+]
+classifiers = [
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "pysam>=0.23.0",
+    "scipy",
+    "matplotlib",
+    "loguru>=0.7.0",
+    "typer>=0.21.1",
+    "pydantic>=2.12.0",
+    "cutadapt>=5.2",
+    "multiqc>=1.33",
+    "numba>=0.57.0",
+]
+[project.optional-dependencies]
+dev = ["ruff", "pytest", "pytest-cov", "mypy", "pre-commit"]
+
+[project.scripts]
+umierrorcorrect2 = "umierrorcorrect2.cli:main_cli"
+
+[project.urls]
+Homepage = "https://github.com/sfilges/umierrorcorrect2"
+Documentation = "https://github.com/sfilges/umierrorcorrect2/wiki"
+Repository = "https://github.com/sfilges/umierrorcorrect2"
+
+[tool.hatch.version]
+path = "umierrorcorrect2/version.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["/umierrorcorrect2", "/test_data", "/doc"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["umierrorcorrect2"]
+
+# Ruff configuration
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+src = ["umierrorcorrect2"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+    "S",   # flake8-bandit (security)
+    "PTH", # flake8-use-pathlib
+]
+ignore = [
+    "E501", # line too long (handled by formatter)
+    "S101", # assert usage (ok in tests)
+    "S603", # subprocess calls - expected for CLI tool that runs bwa, pigz, gzip, cutadapt
+    "S607", # partial executable path - expected for CLI tool (e.g., ["bwa", "mem", ...])
+    "S301", # pickle usage - used intentionally for caching in MSA alignment
+]
+fixable = ["ALL"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "ARG", "S311"] # S311: random ok for test data
+"umierrorcorrect2/cli.py" = ["ARG001"] # version arg used by typer callback
+"umierrorcorrect2/core/consensus.py" = [
+    "ARG001",
+    "SIM108",
+    "SIM201",
+    "B007",
+] # ref arg part of function signature; ternary would reduce readability
+"umierrorcorrect2/core/get_cons_info.py" = [
+    "ARG001",
+    "SIM201",
+    "SIM108",
+    "PTH123",
+] # indel_freq args part of API; debug code in __main__
+"umierrorcorrect2/core/check_args.py" = [
+    "SIM102",
+] # nested if is clearer for validation errors
+"umierrorcorrect2/core/umi_cluster.py" = [
+    "PTH123",
+] # hardcoded debug paths in __main__ block
+"umierrorcorrect2/umi_error_correct.py" = [
+    "SIM108",
+] # ternary would reduce readability for complex expressions
+"umierrorcorrect2/preprocess.py" = ["SIM108"] # ternary would reduce readability
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# Pytest configuration
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = ["-v", "--tb=short", "--strict-markers"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "requires_bwa: marks tests that require bwa installed",
+]
+filterwarnings = ["ignore::DeprecationWarning:pysam.*"]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["umierrorcorrect2"]
+branch = true
+omit = ["*/test_*.py", "*/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+show_missing = true
+
+# Mypy configuration
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = false
+warn_unused_configs = true
+allow_redefinition = true
+ignore_missing_imports = true
+exclude = ["tests/", "build/"]
+
+[[tool.mypy.overrides]]
+module = "pysam.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "umierrorcorrect2.core.consensus",
+    "umierrorcorrect2.core.group",
+    "umierrorcorrect2.core.umi_cluster",
+    "umierrorcorrect2.umi_error_correct",
+    "umierrorcorrect2.get_consensus_statistics",
+    "umierrorcorrect2.cli",
+    "umierrorcorrect2.core.logging_config",
+]
+ignore_errors = true
