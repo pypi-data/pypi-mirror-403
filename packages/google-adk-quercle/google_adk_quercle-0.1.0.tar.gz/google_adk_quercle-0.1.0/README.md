@@ -1,0 +1,196 @@
+# google-adk-quercle
+
+Quercle web search and fetch tools for Google ADK agents.
+
+## Installation
+
+```bash
+pip install google-adk-quercle
+```
+
+## Quick Start
+
+For optimal performance with Google ADK's async runners, use async tools:
+
+```python
+from google.adk.agents import Agent
+from google_adk_quercle import async_quercle_fetch, async_quercle_search
+
+# Create an agent with async Quercle tools (recommended)
+agent = Agent(
+    name="research_agent",
+    model="gemini-2.0-flash",
+    tools=[async_quercle_fetch, async_quercle_search],
+    instruction="You are a research assistant with web search capabilities.",
+)
+```
+
+## Tools
+
+Both sync and async versions are available. **Async tools are recommended** for Google ADK as they don't block the event loop during HTTP requests.
+
+### Async Tools (Recommended)
+
+| Function | Description |
+|----------|-------------|
+| `async_quercle_search` | Search the web asynchronously |
+| `async_quercle_fetch` | Fetch and analyze URLs asynchronously |
+| `get_async_quercle_tools()` | Get both async tools configured together |
+
+### Sync Tools
+
+| Function | Description |
+|----------|-------------|
+| `quercle_search` | Search the web synchronously |
+| `quercle_fetch` | Fetch and analyze URLs synchronously |
+| `get_quercle_tools()` | Get both sync tools configured together |
+
+## Usage Examples
+
+### Search
+
+```python
+from google_adk_quercle import async_quercle_search
+
+# Basic search
+result = await async_quercle_search(query="What is Python?")
+
+# Search with domain filtering
+result = await async_quercle_search(
+    query="machine learning tutorials",
+    allowed_domains=["*.edu", "*.org"],
+    blocked_domains=["spam.com"],
+)
+```
+
+### Fetch
+
+```python
+from google_adk_quercle import async_quercle_fetch
+
+result = await async_quercle_fetch(
+    url="https://docs.python.org/3/tutorial/",
+    prompt="Summarize the main topics covered in this tutorial",
+)
+```
+
+## Custom Configuration
+
+Use factory functions to customize API key or timeout settings:
+
+```python
+from google.adk.agents import Agent
+from google_adk_quercle import create_async_quercle_fetch, create_async_quercle_search
+
+# Create async tools with custom configuration
+fetch_tool = create_async_quercle_fetch(api_key="qk_your_key", timeout=60.0)
+search_tool = create_async_quercle_search(api_key="qk_your_key", timeout=60.0)
+
+agent = Agent(
+    name="custom_agent",
+    model="gemini-2.0-flash",
+    tools=[fetch_tool, search_tool],
+)
+```
+
+Or use `get_async_quercle_tools` for convenience:
+
+```python
+from google.adk.agents import Agent
+from google_adk_quercle import get_async_quercle_tools
+
+tools = get_async_quercle_tools(api_key="qk_your_key", timeout=90.0)
+
+agent = Agent(
+    name="research_agent",
+    model="gemini-2.0-flash",
+    tools=tools,
+)
+```
+
+## Environment Variables
+
+By default, the tools use the `QUERCLE_API_KEY` environment variable for authentication:
+
+```bash
+export QUERCLE_API_KEY=qk_your_api_key
+```
+
+You can also pass the API key directly to factory functions:
+
+```python
+tools = get_async_quercle_tools(api_key="qk_your_api_key")
+```
+
+## Full Example
+
+```python
+import asyncio
+from google.adk.agents import Agent
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.genai import types
+from google_adk_quercle import async_quercle_fetch, async_quercle_search
+
+# Create the agent with async tools
+agent = Agent(
+    name="web_research_agent",
+    model="gemini-2.0-flash",
+    tools=[async_quercle_fetch, async_quercle_search],
+    instruction="""You are a helpful research assistant.
+    Use async_quercle_search to find information on the web.
+    Use async_quercle_fetch to get detailed content from specific URLs.""",
+)
+
+# Set up the runner
+session_service = InMemorySessionService()
+runner = Runner(agent=agent, app_name="research_app", session_service=session_service)
+
+# Run a query
+async def main():
+    session = await session_service.create_session(
+        app_name="research_app",
+        user_id="user123",
+    )
+
+    content = types.Content(
+        role="user",
+        parts=[types.Part(text="What are the latest features in Python 3.12?")],
+    )
+
+    async for event in runner.run_async(
+        user_id="user123",
+        session_id=session.id,
+        new_message=content,
+    ):
+        if event.is_final_response():
+            print(event.content.parts[0].text)
+
+asyncio.run(main())
+```
+
+## API Reference
+
+### Tool Functions
+
+| Function | Async | Description |
+|----------|-------|-------------|
+| `quercle_fetch(url, prompt)` | No | Fetch and analyze a URL |
+| `quercle_search(query, allowed_domains?, blocked_domains?)` | No | Search the web |
+| `async_quercle_fetch(url, prompt)` | Yes | Fetch and analyze a URL asynchronously |
+| `async_quercle_search(query, allowed_domains?, blocked_domains?)` | Yes | Search the web asynchronously |
+
+### Factory Functions
+
+| Function | Returns |
+|----------|---------|
+| `create_quercle_fetch(api_key?, timeout?)` | Sync fetch tool |
+| `create_quercle_search(api_key?, timeout?)` | Sync search tool |
+| `create_async_quercle_fetch(api_key?, timeout?)` | Async fetch tool |
+| `create_async_quercle_search(api_key?, timeout?)` | Async search tool |
+| `get_quercle_tools(api_key?, timeout?)` | List of sync tools |
+| `get_async_quercle_tools(api_key?, timeout?)` | List of async tools |
+
+## License
+
+MIT
