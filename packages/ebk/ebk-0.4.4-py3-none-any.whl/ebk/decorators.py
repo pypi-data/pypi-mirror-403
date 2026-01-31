@@ -1,0 +1,1 @@
+"""Decorators for ebk functionality."""
