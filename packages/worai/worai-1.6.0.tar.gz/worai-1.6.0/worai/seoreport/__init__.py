@@ -1,0 +1,1 @@
+"""SEO Report module."""

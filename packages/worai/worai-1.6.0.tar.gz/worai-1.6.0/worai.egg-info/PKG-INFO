@@ -1,0 +1,183 @@
+Metadata-Version: 2.4
+Name: worai
+Version: 1.6.0
+Summary: Add your description here
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: advertools>=0.16.0
+Requires-Dist: google-auth>=2.35.0
+Requires-Dist: google-auth-oauthlib>=1.2.1
+Requires-Dist: jinja2>=3.1.0
+Requires-Dist: lxml>=5.3.0
+Requires-Dist: morph-kgc>=2.7.0
+Requires-Dist: playwright>=1.48.0
+Requires-Dist: pyshacl>=0.26.0
+Requires-Dist: rdflib>=7.5.0
+Requires-Dist: requests>=2.32.5
+Requires-Dist: tqdm>=4.67.1
+Requires-Dist: typer>=0.12.5
+Requires-Dist: wordlift-sdk>=2.9.1
+Provides-Extra: dev
+Requires-Dist: pytest>=8.3.4; extra == "dev"
+
+# worai
+
+Command-line toolkit for WordLift operations and SEO checks.
+Pronunciation: "waw-RYE"
+
+Docs: https://docs.wordlift.io/worai/
+
+## Install
+
+- `pipx install worai`
+- `pip install worai`
+
+Full docs: https://docs.wordlift.io/worai/
+
+If you plan to run `seocheck`, install Playwright browsers:
+- `playwright install chromium`
+
+## Quick Start
+
+- `worai --help`
+- `worai seocheck https://example.com/sitemap.xml`
+- `worai google-search-console --site sc-domain:example.com --client-secrets ./client_secrets.json`
+- `worai <command> --help`
+
+## Configuration
+
+Config file (TOML) discovery order:
+- `--config`
+- `WORAI_CONFIG`
+- `./worai.toml`
+- `~/.config/worai/config.toml`
+- `~/.worai.toml`
+
+Profiles:
+- `[profile.<name>]` with `--profile` or `WORAI_PROFILE`
+
+Common keys:
+- `wordlift.api_key`
+- `gsc.client_secrets`
+- `gsc.token`
+
+Supported environment variables:
+- `WORAI_CONFIG` — path to a config TOML file (overrides discovery order).
+- `WORAI_PROFILE` — profile name under `[profile.<name>]`.
+- `WORAI_LOG_LEVEL` — default log level (`debug|info|warning|error`).
+- `WORAI_LOG_FORMAT` — default log format (`text|json`).
+- `WORDLIFT_KEY` — WordLift API key for entity operations.
+- `WORDLIFT_API_KEY` — alternate WordLift API key name (also accepted by some commands).
+- `GSC_CLIENT_SECRETS` — path to OAuth client secrets JSON for GSC.
+- `GSC_TOKEN` — path to store the OAuth token.
+- `GSC_OUTPUT` — default output CSV path for GSC export.
+
+Example environment setup:
+```
+export WORDLIFT_KEY="wl_..."
+export WORAI_CONFIG="~/worai.toml"
+export WORAI_PROFILE="dev"
+export GSC_CLIENT_SECRETS="~/client_secrets.json"
+```
+
+Example `worai.toml`:
+```
+[defaults]
+log_level = "info"
+
+[wordlift]
+api_key = "wl_..."
+
+[gsc]
+client_secrets = "/path/to/client_secrets.json"
+token = "/path/to/gsc_token.json"
+```
+
+## Commands
+
+Full docs: https://docs.wordlift.io/worai/
+
+- `seocheck` — run SEO checks against sitemap URLs.
+- `google-search-console` — export GSC page metrics to CSV.
+- `dedupe` — deduplicate WordLift entities by schema:url.
+- `canonicalize-duplicate-pages` — choose canonical URLs using GSC KPIs.
+- `delete-entities-from-csv` — delete entities listed in a CSV.
+- `find-faq-page-wrong-type` — find/patch FAQPage type issues.
+- `find-missing-names` — list pages missing schema:name/headline.
+- `find-url-by-type` — extract schema:url by type from RDF.
+- `link-groups` — build/apply LinkGroup data from CSV.
+- `patch` — patch entities from RDF.
+- `structured-data` — generate JSON-LD/YARRRML mappings or materialize RDF from YARRRML.
+- `validate` — validate RDF against SHACL shapes.
+- `upload-entities-from-turtle` — upload .ttl files with resume.
+
+Command help:
+- `worai <command> --help`
+
+Autocompletion:
+- `worai --install-completion`
+- `worai --show-completion`
+
+## Examples
+
+seocheck
+- `worai seocheck https://example.com/sitemap.xml`
+- `worai seocheck https://example.com/sitemap.xml --output-dir ./seocheck-report --save-html`
+- `worai seocheck https://example.com/sitemap.xml --output-dir ./seocheck-report --no-open-report`
+- `worai seocheck https://example.com/sitemap.xml --user-agent "Mozilla/5.0 ..."`
+- `worai seocheck https://example.com/sitemap.xml --sitemap-fetch-mode browser`
+- `worai seocheck https://example.com/sitemap.xml --no-report-ui`
+- `worai seocheck https://example.com/sitemap.xml --recheck-failed --recheck-from ./seocheck-report`
+
+google-search-console
+- `worai google-search-console --site sc-domain:example.com --client-secrets ./client_secrets.json`
+
+canonicalize-duplicate-pages
+- `worai canonicalize-duplicate-pages --input gsc_pages.csv --output canonical_targets.csv --kpi-window 28d --kpi-metric clicks`
+- `worai canonicalize-duplicate-pages --input gsc_pages.csv --entity-type Product`
+
+dedupe
+- `worai dedupe --dry-run`
+
+find-faq-page-wrong-type
+- `worai find-faq-page-wrong-type ./data.ttl --dry-run --replace-type`
+- `worai find-faq-page-wrong-type ./data.ttl --patch --replace-type`
+
+find-missing-names
+- `worai find-missing-names ./data.ttl`
+
+find-url-by-type
+- `worai find-url-by-type ./data.ttl schema:Service schema:Product`
+
+link-groups
+- `worai link-groups ./links.csv --format turtle`
+- `worai link-groups ./links.csv --apply --dry-run --concurrency 4`
+
+patch
+- `worai patch ./data.ttl --dry-run --add-types`
+
+structured-data
+- `worai structured-data create https://example.com/article Review --output-dir ./structured-data`
+- `worai structured-data create https://example.com/article --type Review --output-dir ./structured-data`
+- `worai structured-data create https://example.com/article --type Review --debug`
+- `worai structured-data create https://example.com/article --type Review --max-xhtml-chars 40000 --max-nesting-depth 2`
+- `worai structured-data generate https://example.com/sitemap.xml --yarrrml ./mapping.yarrrml --output-dir ./out`
+- `worai structured-data generate https://example.com/page --yarrrml ./mapping.yarrrml --format jsonld`
+
+validate
+- `worai validate --shape review-snippet --shape schema-review ./data.jsonld`
+- `worai validate --format raw https://api.wordlift.io/data/example.jsonld`
+
+upload-entities-from-turtle
+- `worai upload-entities-from-turtle ./entities --recursive --limit 50`
+
+## Troubleshooting
+
+- Playwright missing browsers:
+  - `playwright install chromium`
+- YARRRML conversion:
+  - `npm install -g @rmlio/yarrrml-parser`
+- RML execution:
+  - `morph-kgc` is included in project dependencies
+- OAuth token issues:
+  - Remove the token file and re-run `worai google-search-console`.
