@@ -1,0 +1,107 @@
+Metadata-Version: 2.4
+Name: calgebra
+Version: 0.10.6
+Summary: A tiny DSL for calendar interval algebra - compose, filter, and query time ranges using set operations.
+Author: ashenfad
+License: MIT
+Project-URL: Homepage, https://github.com/ashenfad/calgebra
+Project-URL: Bug Tracker, https://github.com/ashenfad/calgebra/issues
+Project-URL: Documentation, https://github.com/ashenfad/calgebra#readme
+Project-URL: Source, https://github.com/ashenfad/calgebra
+Keywords: calendar,scheduling,intervals,time,algebra,dsl
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: Office/Business :: Scheduling
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Typing :: Typed
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: python-dateutil>=2.8.0
+Requires-Dist: typing-extensions>=4.0.0
+Requires-Dist: sortedcontainers>=2.4.0
+Provides-Extra: dev
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: pre-commit; extra == "dev"
+Requires-Dist: uv; extra == "dev"
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: gcsa>=2.6.0; extra == "dev"
+Requires-Dist: icalendar>=6.1.0; extra == "dev"
+Requires-Dist: pandas>=2.0; extra == "dev"
+Provides-Extra: google-calendar
+Requires-Dist: gcsa>=2.6.0; extra == "google-calendar"
+Provides-Extra: ical
+Requires-Dist: icalendar>=6.1.0; extra == "ical"
+Provides-Extra: pandas
+Requires-Dist: pandas>=2.0; extra == "pandas"
+Dynamic: license-file
+
+# calgebra 🗓️
+
+Set algebra for calendars. Compose lazily and query efficiently.
+
+## Installation
+
+```bash
+pip install calgebra
+
+# Or with Google Calendar support
+pip install calgebra[google-calendar]
+
+# Or with iCalendar (.ics) file support
+pip install calgebra[ical]
+```
+
+## Quick Start
+
+```python
+from calgebra import day_of_week, time_of_day, at_tz, pprint, hours, HOUR
+from itertools import islice
+
+tz = "US/Pacific"
+at = at_tz(tz)
+
+# Team calendars
+alice, bob, charlie = ...  # Timeline objects (Google Calendar, .ics files, etc.)
+
+# Define when work happens
+weekend = day_of_week(["saturday", "sunday"], tz=tz)
+weekdays = ~weekend
+workhours = time_of_day(start=9*HOUR, duration=8*HOUR, tz=tz)
+business_hours = weekdays & workhours
+
+# When is anyone busy?
+team_busy = alice | bob | charlie
+
+# Free slots: business hours minus busy, at least 2 hours
+free_slots = (business_hours - team_busy) & (hours >= 2)
+
+# Query January 2025
+pprint(islice(free_slots[at("2025-01-01"):at("2025-02-01")], 5), tz=tz)
+# 2025-01-06 14:00:00 -> 2025-01-06 17:00:00
+# 2025-01-08 09:00:00 -> 2025-01-08 12:00:00
+# ...
+```
+
+**Core Features:**
+- **Set operations**: `|` (union), `&` (intersection), `-` (difference), `~` (complement)
+- **Lazy composition**: Build complex queries, execute with slicing
+- **Recurring patterns**: `day_of_week()`, `time_of_day()`, `recurring()` (RFC 5545)
+- **Interval filtering**: `hours >= 2`, `summary == "standup"`, custom properties
+- **Google Calendar**: Read/write via `calgebra.gcsa`
+- **iCalendar (.ics)**: Load/save standard RFC 5545 files
+
+**→** **[Quick-start](docs/QUICK-START.md)** | **[Tutorial](docs/TUTORIAL.md)** | **[API Reference](docs/API.md)** | **[Google Calendar](docs/GCSA.md)** | **[Demo Video](https://youtu.be/10kG4tw0D4k)**
+
+
+## License
+
+MIT License - see LICENSE file for details.
