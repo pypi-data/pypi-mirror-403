@@ -1,0 +1,58 @@
+# 描述
+
+search_files 是一个基于正则表达式的文件/文件夹路径查找工具，能够查找指定目录下的所有子孙路径，通过正则表达式匹配路径，并返回所有符合条件的文件/文件夹路径。
+
+# 使用示例
+
+```python
+import re
+
+from arts import search_files  # 导入用来查找路径的函数
+from arts import test_dir  # 导入用来测试的目录
+
+# 查找所有.py文件
+results = search_files(root_dir=test_dir, pattern=r'\.py$', flags=0)
+for x in results:
+    print(x)
+
+# 查找所有文件名包含'README'的文件, 忽略大小写
+results = search_files(root_dir=test_dir, pattern=r'README', flags=re.I)
+for x in results:
+    print(x)
+```
+
+## 参数解释
+
+### search_files
+
+- 用来查找路径的函数。
+
+### test_dir
+
+- 本项目自带的一个用来测试查找功能的文件夹，该文件夹内置了一些轻量的文件。
+
+### root_dir
+
+- **类型**：`str` 或 `pathlib.Path`
+- **作用**：指定查找的根目录，函数将查找该目录下的所有子孙路径。
+
+### pattern
+
+- **类型**：`str`
+- **作用**：用于匹配路径的正则表达式模式。
+- **说明**：
+  - 统一使用 `/` 作为路径分隔符，跨平台兼容。
+  - 正则表达式语法遵循 Python 标准 `re` 模块规范。
+
+### flags
+
+- **类型**：`int`
+- **作用**：正则表达式匹配标志，用于修改匹配行为。
+- **说明**：
+  - 默认为 `0`，表示无特殊标志
+  - 需使用 `re` 模块提供的标志，如 re.S、re.I、re.M
+  - 多标志可通过 `|` 组合
+
+# 版权声明
+
+Copyright (c) 2026 许灿标
