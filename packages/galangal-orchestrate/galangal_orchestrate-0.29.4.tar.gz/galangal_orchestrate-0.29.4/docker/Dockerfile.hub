@@ -1,0 +1,106 @@
+# =============================================================================
+# Galangal Hub Server - Dockerfile
+# =============================================================================
+#
+# Build:
+#   docker build -f docker/Dockerfile.hub -t galangal-hub .
+#
+# Run:
+#   docker run -p 8080:8080 -v galangal-hub-data:/data galangal-hub
+#
+# =============================================================================
+
+# =============================================================================
+# Stage 1: Build React frontend
+# =============================================================================
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /app/frontend
+
+# Copy frontend package files
+COPY src/galangal_hub/frontend/package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy frontend source
+COPY src/galangal_hub/frontend/ ./
+
+# Build the frontend
+RUN npm run build
+
+# =============================================================================
+# Stage 2: Python builder
+# =============================================================================
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install hub dependencies directly (not the full galangal-orchestrate package)
+# This avoids pulling in sqlite-vss which isn't available for ARM64
+RUN pip install --no-cache-dir \
+    fastapi>=0.109.0 \
+    uvicorn>=0.27.0 \
+    websockets>=12.0 \
+    aiosqlite>=0.19.0 \
+    jinja2>=3.1.0 \
+    python-multipart>=0.0.6 \
+    pydantic>=2.0.0
+
+# Copy only the hub package (not the full galangal package)
+COPY src/galangal_hub/ ./src/galangal_hub/
+
+# Copy VERSION file for version reporting
+COPY VERSION ./VERSION
+
+# =============================================================================
+# Stage 3: Production image
+# =============================================================================
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --shell /bin/bash --uid 1000 appuser
+
+# Copy installed packages from builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+COPY --from=builder /app/src/galangal_hub /app/galangal_hub
+COPY --from=builder /app/VERSION /app/VERSION
+
+# Copy built frontend from frontend-builder
+COPY --from=frontend-builder /app/frontend/dist /app/galangal_hub/frontend/dist
+
+# Copy entrypoint script
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Create data directory (will be overwritten by volume mount)
+RUN mkdir -p /data && chown appuser:appuser /data
+
+# Expose the default port
+EXPOSE 8080
+
+# Environment variables
+ENV HUB_DB_PATH=/data/hub.db \
+    HUB_HOST=0.0.0.0 \
+    HUB_PORT=8080 \
+    PYTHONPATH=/app \
+    PYTHONUNBUFFERED=1
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${HUB_PORT}/ || exit 1
+
+# Run as root initially, entrypoint will switch to appuser after fixing permissions
+ENTRYPOINT ["/entrypoint.sh"]
