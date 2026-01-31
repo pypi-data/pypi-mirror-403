@@ -1,0 +1,77 @@
+# ZipGit
+
+CLI tool for zipping a git repo and excluding .gitignore and untracked files
+
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Changelog](#changelog)
+
+## Features
+
+- Zips a git repository excluding files specified in .gitignore
+- Optionally includes untracked files
+- Additional archive formats planned for future releases
+
+## Installation
+
+Install with uv:
+
+```bash
+uv tool install zipgit
+```
+
+After installing, run with:
+
+```bashbash
+zipgit --help
+```
+
+Or run directly with uv:
+
+```bash
+uvx zipgit
+```
+
+## Usage
+
+```bash
+zipgit --help
+```
+
+```bash
+ Usage: zipgit [OPTIONS]
+
+ Zip a git repository excluding .gitignore and untracked files.
+
+╭─ Options ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --dir        -d      DIRECTORY  Directory to zip (default: current working directory `/Users/phidjohn/code/pjtlabs/zipgit`)          │
+│ --gitignore  -g      FILE       Name of the gitignore file to use (default: .gitignore in target directory)                          │
+│ --untracked  -u                 Include untracked files in the zip (default: prompt if untracked files are found)                    │
+│ --name       -n      PATH       Name of the output zip file (default: name of the directory `zipgit.zip`)                            │
+│ --yes        -y                 Automatic yes to prompts; assume 'yes' as answer to all prompts and run non-interactively.           │
+│ --help                          Show this message and exit.                                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+```bash
+zipgit
+[01/29/26 23:08:22] INFO     ZipGit v1.0.0
+                    INFO     Scanning directory: /Users/jdoe/myrepo
+                    INFO     1071 files found
+                    WARNING  Found 2 untracked files in the repository. To include them, use the --untracked flag.
+                    INFO     15 files to be zipped
+Proceed to create zip file /Users/jdoe/myrepo/myrepo_2026.01.29.230822.zip? [Y/n]:
+Zipping files... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00
+[01/29/26 23:08:25] INFO     Zip file created: /Users/jdoe/myrepo/myrepo_2026.01.29.230822.zip
+```
+
+> If zip files are not ignored in your repo, they will be included in the zip file unless they were created by ZipGit itself.
+>
+> This prevents recursive zipping of zip files created by this tool.
+>
+> Files created by ZipGit are identified by a specific metadata marker.
+
+## Changelog
+
+View the changelog [here](CHANGELOG.md)
