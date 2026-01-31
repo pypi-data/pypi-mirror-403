@@ -1,0 +1,31 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on "Keep a Changelog", and this project adheres to Semantic Versioning.
+
+## 0.2.0
+- Amelioration des performances des pipelines inductifs et des chemins critiques.
+- Couverture de tests renforcee pour securiser les nouvelles optimisations.
+
+## 0.1.2
+- Fix misc bugs
+
+## 0.1.1
+- Bump version metadata and docs.
+- Allow docs/release workflows to run on numeric tags.
+
+## 0.1.0
+- Contains all desired transductive methods and marks a stable benchmark release.
+
+## 0.0.4
+- Added multiple semi-supervised methods.
+
+## 0.0.3
+- Fixed bugs and improved logging for inductive methods.
+
+## 0.0.2
+- Updated github workflow
+
+## 0.0.1
+- Initial public release.
