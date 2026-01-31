@@ -1,0 +1,218 @@
+# Meeting Noter
+
+Offline meeting transcription tool for macOS. Captures both your voice and meeting participants' audio, saves to MP3, and transcribes locally using Whisper.
+
+## Features
+
+- **No virtual audio devices needed** - Uses ScreenCaptureKit (like Notion, Discord)
+- **Captures both sides** - Your mic + system audio (meeting participants)
+- **Offline transcription** - Uses Whisper locally, no API calls
+- **Auto-detection** - Detects active meetings (Zoom, Teams, Meet, Slack)
+- **Multiple interfaces** - Menu bar app, desktop GUI, or CLI
+- **Auto-segmentation** - One file per meeting (detects silence)
+
+## Installation
+
+### Option 1: Using pipx (Recommended)
+
+```bash
+# Install pipx if you don't have it
+brew install pipx
+pipx ensurepath
+
+# Install meeting-noter
+cd /path/to/meeting-noter
+pipx install -e .
+```
+
+### Option 2: Using a virtual environment
+
+```bash
+cd /path/to/meeting-noter
+python3 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -e .
+```
+
+Then add an alias in your `~/.zshrc`:
+
+```bash
+echo 'alias meeting-noter="/path/to/meeting-noter/.venv/bin/meeting-noter"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+## Quick Start
+
+### 1. One-time Setup
+
+```bash
+meeting-noter setup
+```
+
+This will request Screen Recording permission, which is needed to capture meeting participants' audio.
+
+### 2. Launch the App
+
+**Menu Bar App** (recommended):
+```bash
+meeting-noter menubar
+```
+
+**Desktop GUI**:
+```bash
+meeting-noter gui
+```
+
+**CLI Recording**:
+```bash
+meeting-noter start "Weekly Standup"
+```
+
+### 3. Record a Meeting
+
+- The menu bar app auto-detects meetings and prompts to record
+- Or manually start recording via the GUI/CLI
+- Press Ctrl+C (CLI) or click Stop to end recording
+
+### 4. Transcribe
+
+Recordings are auto-transcribed by default. Or manually:
+
+```bash
+# Transcribe the most recent recording
+meeting-noter transcribe
+
+# Transcribe a specific file
+meeting-noter transcribe recording.mp3
+
+# List all recordings
+meeting-noter list
+```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `meeting-noter setup` | One-time setup (Screen Recording permission) |
+| `meeting-noter menubar` | Launch menu bar app |
+| `meeting-noter gui` | Launch desktop GUI |
+| `meeting-noter start [name]` | Interactive CLI recording |
+| `meeting-noter daemon` | Start background audio capture |
+| `meeting-noter status` | Check daemon status |
+| `meeting-noter stop` | Stop the daemon |
+| `meeting-noter list` | List recent recordings |
+| `meeting-noter transcribe` | Transcribe a recording |
+| `meeting-noter devices` | List audio devices |
+
+## Options
+
+### `start`
+- First argument: Meeting name (optional, auto-generates timestamp if omitted)
+
+### `daemon`
+- `-o, --output-dir`: Where to save recordings (default: `~/meetings`)
+- `-f, --foreground`: Run in foreground instead of background
+- `-n, --name`: Meeting name for the recording
+
+### `transcribe`
+- `-m, --model`: Whisper model size (tiny.en, base.en, small.en, medium.en, large-v3)
+- `-l, --live`: Real-time transcription (experimental)
+- `-o, --output-dir`: Directory with recordings
+
+### `list`
+- `-n, --limit`: Number of recordings to show
+- `-o, --output-dir`: Directory with recordings
+
+## How It Works
+
+```
+┌─────────────────────────────────────┐
+│         Your Meeting App            │
+│      (Zoom/Teams/Meet/Slack)        │
+└──────────────────┬──────────────────┘
+                   │
+     ┌─────────────┴─────────────┐
+     ▼                           ▼
+┌─────────┐               ┌─────────────┐
+│   Mic   │               │ System Audio│
+│(default)│               │(ScreenCaptureKit)
+└────┬────┘               └──────┬──────┘
+     │                           │
+     └───────────┬───────────────┘
+                 ▼
+         ┌─────────────┐
+         │Meeting Noter│
+         │  (capture)  │
+         └──────┬──────┘
+                │
+                ▼
+    ~/meetings/2024-01-15_Weekly_Standup.mp3
+                │
+                ▼ (auto or on-demand)
+         ┌─────────────┐
+         │   Whisper   │ (local)
+         └──────┬──────┘
+                │
+                ▼
+    ~/meetings/2024-01-15_Weekly_Standup.txt
+```
+
+## Permissions Required
+
+1. **Microphone** - For capturing your voice
+2. **Screen Recording** - For capturing system audio (meeting participants)
+   - Grant in: System Settings > Privacy & Security > Screen Recording
+   - This uses ScreenCaptureKit, the same API used by Notion, Discord, etc.
+
+## Troubleshooting
+
+### No system audio captured (only my voice)
+
+Screen Recording permission not granted. Go to:
+System Settings > Privacy & Security > Screen Recording
+
+Enable the toggle for Terminal (or your IDE/app).
+
+### Meeting not auto-detected
+
+Meeting detection works for: Zoom, Microsoft Teams, Google Meet, Slack.
+The meeting window must be open (not minimized).
+
+### Transcription is slow
+
+Use a smaller model:
+
+```bash
+meeting-noter transcribe --model tiny.en
+```
+
+Model sizes:
+- `tiny.en` (~75MB) - Fastest, good for most cases
+- `base.en` (~150MB) - Better accuracy
+- `small.en` (~500MB) - High accuracy
+- `medium.en` (~1.5GB) - Very high accuracy
+- `large-v3` (~3GB) - Best accuracy
+
+## Configuration
+
+Config file: `~/.config/meeting-noter/config.json`
+
+```json
+{
+    "recordings_dir": "~/meetings",
+    "transcripts_dir": "~/meetings",
+    "whisper_model": "tiny.en",
+    "auto_transcribe": true,
+    "silence_timeout": 5,
+    "capture_system_audio": true
+}
+```
+
+## Requirements
+
+- macOS 12.3+ (for ScreenCaptureKit)
+- Python 3.9+
+
+## License
+
+MIT
