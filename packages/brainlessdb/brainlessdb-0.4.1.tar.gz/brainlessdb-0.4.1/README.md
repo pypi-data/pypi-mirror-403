@@ -1,0 +1,252 @@
+# Brainless DB
+
+Typed collections backed by NATS JetStream KV. In-memory with background sync.
+
+## Quick Start
+
+```python
+from typing import Annotated
+from msgspec import Meta
+from brainlessdb import BrainlessDB, BrainlessDBFeat, BrainlessStruct
+
+class UserV1(BrainlessStruct):
+    id: Annotated[int, Meta(extra={"brainlessdb_flags": BrainlessDBFeat.INDEX})]
+    name: Annotated[str, Meta()] = ""
+
+db = BrainlessDB(nats, namespace="app")
+users = db.collection(UserV1)  # sync - just registers
+await db.start()  # loads all registered collections
+await users.watch()  # start watching for remote changes
+
+# Create
+user = users.add(UserV1(id=1, name="Alice"))
+
+# Update
+user.name = "Bob"
+user.save()  # marks dirty, schedules flush
+
+# Query (sync - operates on in-memory data)
+user = users.find(id=1)  # uses index
+all_users = users.filter(lambda u: u.id > 0)
+
+await db.stop()
+```
+
+## When to Use What
+
+| Class | Use for | Has UUID | Stored in |
+|-------|---------|----------|-----------|
+| `BrainlessStruct` | Main entities (User, Order, etc.) | Yes | Own bucket(s) |
+| `Struct` (msgspec) | Nested data, app-local data | No | Inside parent entity |
+
+```python
+from msgspec import Struct
+from brainlessdb import BrainlessStruct
+
+# App-local data - plain Struct (no UUID, not an entity)
+class UcsLocal(Struct):
+    sid: int = 0
+    pointer: int = 0
+
+# Nested data - plain Struct
+class Address(Struct):
+    street: str = ""
+    city: str = ""
+
+# Main entity - BrainlessStruct (has UUID, stored in NATS)
+class UserV1(BrainlessStruct):
+    id: Annotated[int, Meta()]
+    address: Optional[Address] = None  # nested struct
+    _: Optional[UcsLocal] = None       # app-local struct
+```
+
+## Global API
+
+```python
+import brainlessdb
+
+brainlessdb.setup(nats, namespace="app")  # sync
+users = brainlessdb.collection(UserV1)  # sync
+await brainlessdb.start()  # loads all registered collections
+await brainlessdb.flush()  # manual flush
+await brainlessdb.stop()
+```
+
+## Field Types
+
+### Config Fields (default)
+Persistent data synced across all instances:
+
+```python
+class UserV1(BrainlessStruct):
+    id: Annotated[int, Meta()]
+    name: Annotated[str, Meta()] = ""
+```
+
+### State Fields
+Ephemeral data (separate bucket, faster sync):
+
+```python
+class UserV1(BrainlessStruct):
+    id: Annotated[int, Meta()]
+    status: Annotated[int, Meta(extra={"brainlessdb_flags": BrainlessDBFeat.STATE})] = 0
+```
+
+### Indexed Fields
+Fast O(1) lookups:
+
+```python
+class UserV1(BrainlessStruct):
+    id: Annotated[int, Meta(extra={"brainlessdb_flags": BrainlessDBFeat.INDEX})]
+```
+
+### Unique Fields
+Enforces uniqueness constraint (also auto-indexed):
+
+```python
+class UserV1(BrainlessStruct):
+    email: Annotated[Optional[str], Meta(extra={"brainlessdb_flags": BrainlessDBFeat.UNIQUE})] = None
+```
+
+Combine flags with `|`:
+
+```python
+counter: Annotated[int, Meta(extra={"brainlessdb_flags": BrainlessDBFeat.INDEX | BrainlessDBFeat.STATE})] = 0
+```
+
+### App-Local Fields
+Data private to each namespace. Use plain `Struct` (not `BrainlessStruct`):
+
+```python
+from msgspec import Struct
+
+# Plain Struct - just data, no UUID
+class UcsLocal(Struct):
+    sid: int = 0
+
+class AriLocal(Struct):
+    channel_id: str = ""
+
+# Entity with app-local field
+class UserV1(BrainlessStruct):
+    id: Annotated[int, Meta()]
+    _: Union[UcsLocal, AriLocal, None] = None
+```
+
+Each namespace only sees its own local data:
+
+```python
+# In UCS app (namespace="ucs")
+user = UserV1(id=1, _=UcsLocal(sid=123))
+users.add(user)
+user._.sid  # 123
+
+# In ARI app (namespace="ari")  
+user = users.find(id=1)
+user._  # None - no ARI local data yet
+```
+
+## CRUD Operations
+
+```python
+# Add/update (validates types on add)
+item = coll.add(MyStruct(...))
+
+# Update via save()
+item.field = value
+item.save()
+
+# Get by UUID
+item = coll.get(uuid_str)
+
+# Delete
+coll.delete(item)
+coll.delete(uuid_str)
+
+# Clear all
+coll.clear()
+
+# Dict-style access
+item = coll[uuid_str]
+del coll[item]
+len(coll)
+for item in coll: ...
+item in coll
+```
+
+## Filtering
+
+All filter/find methods are **sync** (operate on in-memory data):
+
+```python
+# By predicate
+items = coll.filter(lambda i: i.priority > 5)
+
+# By field (uses index if available)
+items = coll.filter(status=1)
+
+# Nested fields
+items = coll.filter(address__city="Prague")
+
+# Combined
+items = coll.filter(lambda i: i.active, status=1, limit=10)
+
+# Find single
+item = coll.find(id=123)
+
+# Sort
+items = coll.order_by("priority", reverse=True)
+```
+
+## Events
+
+Callbacks fire on remote changes by default. Set `trigger_local=True` to also fire on local changes.
+
+```python
+# Any change
+coll.on_change(lambda old, new: print(f"{old} -> {new}"))
+
+# Deletion
+coll.on_delete(lambda item: print(f"deleted: {item}"))
+
+# Specific property
+coll.on_property_change(
+    status=lambda item, field, old, new: print(f"{field}: {old} -> {new}")
+)
+
+# Also trigger on local changes
+coll.on_change(my_callback, trigger_local=True)
+```
+
+## Watching
+
+```python
+# Watch single collection
+await coll.watch()
+await coll.unwatch()
+
+# Watch all collections
+await db.watch()
+await db.unwatch()
+```
+
+Watch updates in-memory entities automatically when remote changes arrive.
+
+## Flush Scheduling
+
+- Changes schedule flush after `flush_interval` (default 100ms)
+- Multiple changes batch into single flush
+- `flush_interval=0` flushes immediately
+- `await db.flush()` forces immediate flush
+
+## Multi-Bucket Architecture
+
+Each struct uses up to 3 NATS KV buckets:
+- `{StructName}` - config fields (persistent)
+- `{StructName}-State` - state fields (ephemeral)
+- `{StructName}-{LocalClass}` - app-local fields (per namespace)
+
+Example: `UserV1` with UCS namespace creates:
+- `UserV1` (config)
+- `UserV1-State` (if state fields exist)
+- `UserV1-UcsLocal` (local data for UCS app)
