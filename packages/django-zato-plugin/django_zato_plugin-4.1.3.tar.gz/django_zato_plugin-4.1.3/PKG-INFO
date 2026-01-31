@@ -1,0 +1,97 @@
+Metadata-Version: 2.4
+Name: django-zato-plugin
+Version: 4.1.3
+Summary: Django plugin for Zato
+Project-URL: Homepage, https://zato.io
+Project-URL: Documentation, https://zato.io/docs
+Project-URL: Repository, https://github.com/zatosource/django-zato-plugin
+Author-email: "Zato Source s.r.o." <info@zato.io>
+License-Expression: AGPL-3.0
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Environment :: Web Environment
+Classifier: Framework :: Django
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: GNU Affero General Public License v3
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Internet :: WWW/HTTP
+Requires-Python: >=3.10
+Requires-Dist: requests
+Description-Content-Type: text/markdown
+
+# django-zato-plugin
+
+A client library for invoking Zato services from Django applications.
+
+Zato is an integration platform that orchestrates and automates your to APIs, databases, queues, and other systems.
+
+Learn more here: https://zato.io
+
+With this plugin, Django delegates integration work to Zato - your views call Zato services,
+Zato handles the rest. Less code in Django, all integrations in one place.
+
+## Installation
+
+```bash
+pip install django-zato-plugin
+```
+
+## Configuration
+
+Add to your Django settings:
+
+```python
+ZATO_URL = 'http://localhost:17010/django'
+ZATO_USERNAME = 'django'
+ZATO_PASSWORD = 'password' # Use your Zato password, e.g. from the Zato_Password env. variable
+```
+
+## API
+
+The client exposes one method:
+
+**response = client.invoke(service, data=None)**
+
+- **service** - name of the Zato service to invoke (string)
+- **data** - request data to send (dict or None)
+
+Returns the response from the Zato service as a dict.
+
+## Usage
+
+```python
+# views.py
+from django.http import JsonResponse
+from django_zato import client
+
+def block_ip(request):
+
+    # Extract the request ..
+    ip_address = request.POST['ip_address']
+    reason = request.POST['reason']
+
+    # .. block on firewall and get the response ..
+    firewall_response = client.invoke('firewall.block-ip', {'ip_address': ip_address})
+    rule_id = firewall_response['rule_id']
+
+    # .. log incident in SIEM ..
+    siem_response = client.invoke('siem.log-incident', {
+        'ip_address': ip_address,
+        'reason': reason,
+        'action': 'blocked',
+        'firewall_rule_id': rule_id,
+    })
+
+    # .. Extract the response from SIEM ..
+    incident_id = siem_response['incident_id']
+
+    # .. and return the response to the frontend.
+    return JsonResponse({
+        'status': 'ok',
+        'firewall_rule_id': rule_id,
+        'siem_incident_id': incident_id,
+    })
+```
