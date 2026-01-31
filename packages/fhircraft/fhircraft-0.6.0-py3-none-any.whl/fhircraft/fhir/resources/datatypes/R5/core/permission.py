@@ -1,0 +1,405 @@
+from pydantic import Field, model_validator
+from typing import Optional, List
+
+NoneType = type(None)
+
+import fhircraft.fhir.resources.validators as fhir_validators
+
+from fhircraft.fhir.resources.datatypes.primitives import String, Uri, Code, DateTime
+
+from fhircraft.fhir.resources.datatypes.R5.complex import (
+    Element,
+    Meta,
+    Narrative,
+    Extension,
+    Reference,
+    Period,
+    BackboneElement,
+    CodeableConcept,
+    Coding,
+    Expression,
+)
+from .resource import Resource
+from .domain_resource import DomainResource
+
+
+class PermissionJustification(BackboneElement):
+    """
+    The asserted justification for using the data.
+    """
+
+    basis: Optional[List[CodeableConcept]] = Field(
+        description="The regulatory grounds upon which this Permission builds",
+        default=None,
+    )
+    evidence: Optional[List[Reference]] = Field(
+        description="Justifing rational",
+        default=None,
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "evidence",
+                "basis",
+                "modifierExtension",
+                "extension",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+
+class PermissionRuleDataResource(BackboneElement):
+    """
+    Explicit FHIR Resource references.
+    """
+
+    meaning: Optional[Code] = Field(
+        description="instance | related | dependents | authoredby",
+        default=None,
+    )
+    meaning_ext: Optional[Element] = Field(
+        description="Placeholder element for meaning extensions",
+        default=None,
+        alias="_meaning",
+    )
+    reference: Optional[Reference] = Field(
+        description="The actual data reference",
+        default=None,
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "reference",
+                "meaning",
+                "modifierExtension",
+                "extension",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+
+class PermissionRuleData(BackboneElement):
+    """
+    A description or definition of which activities are allowed to be done on the data.
+    """
+
+    resource: Optional[List[PermissionRuleDataResource]] = Field(
+        description="Explicit FHIR Resource references",
+        default=None,
+    )
+    security: Optional[List[Coding]] = Field(
+        description="Security tag code on .meta.security",
+        default=None,
+    )
+    period: Optional[List[Period]] = Field(
+        description="Timeframe encompasing data create/update",
+        default=None,
+    )
+    expression: Optional[Expression] = Field(
+        description="Expression identifying the data",
+        default=None,
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "expression",
+                "period",
+                "security",
+                "resource",
+                "modifierExtension",
+                "extension",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+
+class PermissionRuleActivity(BackboneElement):
+    """
+    A description or definition of which activities are allowed to be done on the data.
+    """
+
+    actor: Optional[List[Reference]] = Field(
+        description="Authorized actor(s)",
+        default=None,
+    )
+    action: Optional[List[CodeableConcept]] = Field(
+        description="Actions controlled by this rule",
+        default=None,
+    )
+    purpose: Optional[List[CodeableConcept]] = Field(
+        description="The purpose for which the permission is given",
+        default=None,
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "purpose",
+                "action",
+                "actor",
+                "modifierExtension",
+                "extension",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+
+class PermissionRule(BackboneElement):
+    """
+    A set of rules.
+    """
+
+    type: Optional[Code] = Field(
+        description="deny | permit",
+        default=None,
+    )
+    type_ext: Optional[Element] = Field(
+        description="Placeholder element for type extensions",
+        default=None,
+        alias="_type",
+    )
+    data: Optional[List[PermissionRuleData]] = Field(
+        description="The selection criteria to identify data that is within scope of this provision",
+        default=None,
+    )
+    activity: Optional[List[PermissionRuleActivity]] = Field(
+        description="A description or definition of which activities are allowed to be done on the data",
+        default=None,
+    )
+    limit: Optional[List[CodeableConcept]] = Field(
+        description="What limits apply to the use of the data",
+        default=None,
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "limit",
+                "activity",
+                "data",
+                "type",
+                "modifierExtension",
+                "extension",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+
+class Permission(DomainResource):
+    """
+    Permission resource holds access rules for a given data and context.
+    """
+
+    _abstract = False
+    _type = "Permission"
+    _canonical_url = "http://hl7.org/fhir/StructureDefinition/Permission"
+
+    id: Optional[String] = Field(
+        description="Logical id of this artifact",
+        default=None,
+    )
+    id_ext: Optional[Element] = Field(
+        description="Placeholder element for id extensions",
+        default=None,
+        alias="_id",
+    )
+    meta: Optional[Meta] = Field(
+        description="Metadata about the resource.",
+        default_factory=lambda: Meta(
+            profile=["http://hl7.org/fhir/StructureDefinition/Permission"]
+        ),
+    )
+    implicitRules: Optional[Uri] = Field(
+        description="A set of rules under which this content was created",
+        default=None,
+    )
+    implicitRules_ext: Optional[Element] = Field(
+        description="Placeholder element for implicitRules extensions",
+        default=None,
+        alias="_implicitRules",
+    )
+    language: Optional[Code] = Field(
+        description="Language of the resource content",
+        default=None,
+    )
+    language_ext: Optional[Element] = Field(
+        description="Placeholder element for language extensions",
+        default=None,
+        alias="_language",
+    )
+    text: Optional[Narrative] = Field(
+        description="Text summary of the resource, for human interpretation",
+        default=None,
+    )
+    contained: Optional[List[Resource]] = Field(
+        description="Contained, inline Resources",
+        default=None,
+    )
+    extension: Optional[List[Extension]] = Field(
+        description="Additional content defined by implementations",
+        default=None,
+    )
+    modifierExtension: Optional[List[Extension]] = Field(
+        description="Extensions that cannot be ignored",
+        default=None,
+    )
+    status: Optional[Code] = Field(
+        description="active | entered-in-error | draft | rejected",
+        default=None,
+    )
+    status_ext: Optional[Element] = Field(
+        description="Placeholder element for status extensions",
+        default=None,
+        alias="_status",
+    )
+    asserter: Optional[Reference] = Field(
+        description="The person or entity that asserts the permission",
+        default=None,
+    )
+    date: Optional[List[DateTime]] = Field(
+        description="The date that permission was asserted",
+        default=None,
+    )
+    date_ext: Optional[List[Optional[Element]]] = Field(
+        description="Placeholder element for date extensions",
+        default=None,
+        alias="_date",
+    )
+    validity: Optional[Period] = Field(
+        description="The period in which the permission is active",
+        default=None,
+    )
+    justification: Optional[PermissionJustification] = Field(
+        description="The asserted justification for using the data",
+        default=None,
+    )
+    combining: Optional[Code] = Field(
+        description="deny-overrides | permit-overrides | ordered-deny-overrides | ordered-permit-overrides | deny-unless-permit | permit-unless-deny",
+        default=None,
+    )
+    combining_ext: Optional[Element] = Field(
+        description="Placeholder element for combining extensions",
+        default=None,
+        alias="_combining",
+    )
+    rule: Optional[List[PermissionRule]] = Field(
+        description="Constraints to the Permission",
+        default=None,
+    )
+
+    @model_validator(mode="after")
+    def FHIR_ele_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "rule",
+                "combining",
+                "justification",
+                "validity",
+                "date",
+                "asserter",
+                "status",
+                "modifierExtension",
+                "extension",
+                "text",
+                "language",
+                "implicitRules",
+                "meta",
+            ),
+            expression="hasValue() or (children().count() > id.count())",
+            human="All FHIR elements must have a @value or children",
+            key="ele-1",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_ext_1_constraint_validator(self):
+        return fhir_validators.validate_element_constraint(
+            self,
+            elements=(
+                "modifierExtension",
+                "extension",
+            ),
+            expression="extension.exists() != value.exists()",
+            human="Must have either extensions or value[x], not both",
+            key="ext-1",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_dom_2_constraint_model_validator(self):
+        return fhir_validators.validate_model_constraint(
+            self,
+            expression="contained.contained.empty()",
+            human="If the resource is contained in another resource, it SHALL NOT contain nested Resources",
+            key="dom-2",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_dom_3_constraint_model_validator(self):
+        return fhir_validators.validate_model_constraint(
+            self,
+            expression="contained.where((('#'+id in (%resource.descendants().reference | %resource.descendants().ofType(canonical) | %resource.descendants().ofType(uri) | %resource.descendants().ofType(url))) or descendants().where(reference = '#').exists() or descendants().where(ofType(canonical) = '#').exists() or descendants().where(ofType(canonical) = '#').exists()).not()).trace('unmatched', id).empty()",
+            human="If the resource is contained in another resource, it SHALL be referred to from elsewhere in the resource or SHALL refer to the containing resource",
+            key="dom-3",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_dom_4_constraint_model_validator(self):
+        return fhir_validators.validate_model_constraint(
+            self,
+            expression="contained.meta.versionId.empty() and contained.meta.lastUpdated.empty()",
+            human="If a resource is contained in another resource, it SHALL NOT have a meta.versionId or a meta.lastUpdated",
+            key="dom-4",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_dom_5_constraint_model_validator(self):
+        return fhir_validators.validate_model_constraint(
+            self,
+            expression="contained.meta.security.empty()",
+            human="If a resource is contained in another resource, it SHALL NOT have a security label",
+            key="dom-5",
+            severity="error",
+        )
+
+    @model_validator(mode="after")
+    def FHIR_dom_6_constraint_model_validator(self):
+        return fhir_validators.validate_model_constraint(
+            self,
+            expression="text.`div`.exists()",
+            human="A resource should have narrative for robust management",
+            key="dom-6",
+            severity="warning",
+        )
