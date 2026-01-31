@@ -1,0 +1,97 @@
+[build-system]
+requires = ["uv_build"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+  "ty",
+  "ruff",
+  "pre-commit",
+  "django-stubs",
+  "poethepoet",
+  "behave",
+  "behave-django",
+  "beautifulsoup4",
+  "pygments"
+]
+
+[project]
+name = "wagtail-form-plugins"
+version = "0.6.0"
+description = "A set of plugins used to customize and improve the Wagtail form builder in a modular way."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+keywords = ["wagtail", "form", "plugins"]
+classifiers = ["Framework :: Wagtail"]
+authors = [
+  {name = "Nathanaël Jourdane", email = "njourdane@laas.fr"}
+]
+dependencies = [
+  "django",
+  "wagtail"
+]
+
+[project.optional-dependencies]
+demo = [
+  "django-bootstrap5",
+  "wagtail-autocomplete"
+]
+
+[project.urls]
+homepage = "https://pypi.org/project/wagtail_form_plugins"
+source = "https://github.com/laas/wagtail-form-plugins"
+issues = "https://github.com/laas/wagtail-form-plugins/issues"
+
+[tool.behave]
+paths = ["demo/tests"]
+capture = true
+capture_log = true
+stop = true
+
+[tool.django-stubs]
+django_settings_module = "demo.settings"
+
+[tool.poe.tasks]
+check-biome = "biome check --line-width=100 --indent-width=4 */static/"
+check-django = "python manage.py check"
+check-ruff = "ruff check"
+check-ty = "ty check --color always"
+check-uv = "uv sync --extra demo --dry-run"
+fix-biome = "poe check-biome --write"
+fix-ruff-check = "poe check-ruff --fix --fix-only"
+fix-ruff-format = "ruff format"
+test = "python manage.py behave --simple"
+
+[tool.poe.tasks.check]
+parallel = ["check-biome", "check-django", "check-ruff", "check-ty", "check-uv"]
+ignore_fail = true
+
+[tool.poe.tasks.fix]
+parallel = ["fix-biome", "fix-ruff-check", "fix-ruff-format"]
+ignore_fail = true
+
+[tool.ruff]
+extend-exclude = ["migrations"]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["D203", "D212", "D106", "D107", "ANN002", "ANN003", "ANN204", "COM812"]
+
+[tool.ruff.lint.isort]
+section-order = ["future", "standard-library", "django", "wagtail", "first-party", "local-folder", "third-party"]
+sections.django = ["django"]
+sections.wagtail = ["wagtail"]
+
+[tool.ty.analysis]
+respect-type-ignore-comments = false
+
+[tool.uv.build-backend]
+module-root = ""
+
+[tool.uv.sources]
+# behave = {git = "https://github.com/behave/behave.git"}
+behave = {git = "https://github.com/vijaymodha/behave.git", branch = "fix-stub"} # see https://github.com/behave/behave/pull/1295
