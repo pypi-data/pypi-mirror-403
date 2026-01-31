@@ -1,0 +1,73 @@
+"""Re-export targets from utils for convenience."""
+
+from wafer_core.utils.kernel_utils.targets import (
+    BaremetalTarget,
+    DigitalOceanTarget,
+    ModalTarget,
+    RunPodTarget,
+    TargetConfig,
+    VMTarget,
+    check_target_available,
+    find_free_gpu,
+    is_baremetal_target,
+    is_digitalocean_target,
+    is_modal_target,
+    is_runpod_target,
+    is_vm_target,
+    run_operation_on_target,
+    select_target_for_operation,
+    target_to_deployment_config,
+)
+from wafer_core.targets.runpod import (
+    RunPodError,
+    RunPodSSHInfo,
+    cleanup_all_pods,
+    cleanup_target,
+    get_pod_state,
+    list_running_pods,
+    runpod_ssh_context,
+)
+from wafer_core.targets.digitalocean import (
+    DigitalOceanError,
+    DigitalOceanSSHInfo,
+    cleanup_all_droplets,
+    cleanup_digitalocean_target,
+    digitalocean_ssh_context,
+    get_droplet_state,
+    list_running_droplets,
+)
+
+__all__ = [
+    "BaremetalTarget",
+    "VMTarget",
+    "ModalTarget",
+    "RunPodTarget",
+    "DigitalOceanTarget",
+    "TargetConfig",
+    "is_baremetal_target",
+    "is_vm_target",
+    "is_modal_target",
+    "is_runpod_target",
+    "is_digitalocean_target",
+    "target_to_deployment_config",
+    "select_target_for_operation",
+    "check_target_available",
+    "find_free_gpu",
+    "run_operation_on_target",
+    # RunPod provisioning
+    "RunPodError",
+    "RunPodSSHInfo",
+    "runpod_ssh_context",
+    "cleanup_target",
+    "cleanup_all_pods",
+    "list_running_pods",
+    "get_pod_state",
+    # DigitalOcean provisioning
+    "DigitalOceanError",
+    "DigitalOceanSSHInfo",
+    "digitalocean_ssh_context",
+    "cleanup_digitalocean_target",
+    "cleanup_all_droplets",
+    "list_running_droplets",
+    "get_droplet_state",
+]
