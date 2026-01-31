@@ -1,0 +1,71 @@
+bytes:
+  - '/DocuSign'
+  - '/Adobe\.PPKLite'
+  - '/DocTimeStamp'
+  - '/DSS'
+  - '/AcrobatSign'
+  - '/HelloSign'
+  - '/Vinesign'
+
+text:
+  - 'DocuSign\s+Envelope\s+ID'
+  - 'Signature\s+Certificate'
+  - 'Electronic\s+Record\s+and\s+Signature\s+Disclosure'
+  - 'Adobe\s+Acrobat\s+Sign|Acrobat\s+Sign'
+  - 'HelloSign|Dropbox\s+Sign'
+  - 'Vinesign'
+
+# LABELS: only “Signature of …” style phrases (keep narrow)
+labels:
+  patient: '(signature\s+of\s+(the\s+)?patient|patient''?s?\s+signature|patient\s+signature)'
+  attorney: '(signature\s+of\s+(the\s+)?attorney|attorney''?s?\s+signature|attorney\s+signature|counsel\s+signature)'
+  representative: '(signature\s+of\s+(the\s+)?(authorized\s+)?representative|representative''?s?\s+signature|parent\s*(/|\s+and\s+)?\s*guardian\s+signature|guardian\s+signature|executor\s+signature|custodian\s+signature|conservator\s+signature)'
+
+# GENERAL tokens (broader, weaker than labels)
+general:
+  attorney: '\battorney''?s?\b'
+  representative: '\brepresentative\b|\bparent\b|\bguardian\b'
+  patient: '\b(patient|self)\b|I\s*,?\s*[A-Za-z.\-''\s]{1,60}\s*,?\s+authorize\b'
+
+# Field-name hints used for /T, /TU, /TM
+field_hints:
+  patient: ['patient', 'plaintiff', 'self', 'claimant']
+  attorney: ['attorney', 'lawyer', 'counsel']
+  representative: ['representative', 'rep', 'guardian', 'parent', 'executor', 'custodian', 'conservator', 'poa', 'powerofattorney']
+
+# Hard rules used in vendor/Acro-only pseudo signatures
+doc_hard:
+  rel_label: 'relationship\s+to\s+patient(\s*\(.*?\))?'
+  kin: '\b(mother|father|mom|dad|child|son|daughter|spouse|husband|wife|guardian|parent|grandmother|grandfather|grandparent|step[-\s]?parent|stepmother|stepfather|next\s+of\s+kin|conservator|custodian|caregiver)\b'
+  minor: '\bminor\b|patient\s+was\s+unable\s+to\s+sign|unable\s+to\s+sign'
+  first_person: 'I\s*,?\s*[A-Za-z.\-''\s]{1,80}\s*,?\s+authorize\b'
+
+# Document-level hints for vendor-only pseudo (multiplicative scoring)
+doc_hints_strong:
+  representative:
+    - '\bparent\s*/\s*guardian\b'
+    - '\brelationship\s+to\s+patient\b'
+    - '\bnext\s+of\s+kin\b'
+    - '\bminor\b'
+    - 'reason\s+patient\s+was\s+unable\s+to\s+sign'
+    - '\bauthorized\s+representative\b'
+    - '\b(power\s+of\s+attorney|P\.?O\.?A)\b'
+    - '\blegal\s+representative\b'
+  patient:
+    - '\bsigned?\s*\(\s*patient\b'
+    - '\bpatient''?s?\s*signature\b'
+  attorney:
+    - '(signature\s+of\s+(the\s+)?attorney|attorney''?s?\s+signature|counsel\s+signature)'
+    - '\besq\.?\b|\bbar\s+no\.?\b'
+
+doc_hints_weak:
+  representative: ['\bguardian\b', '\brepresentative\b', '\bparent\b']
+  patient: ['\bpatient\b', '\bself\b']
+  # no weak attorney on purpose
+
+weights:
+  field: 3
+  page_label: 2
+  general: 1
+  doc_hint_strong: 3
+  doc_hint_weak: 2
