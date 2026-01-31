@@ -1,0 +1,310 @@
+{
+    "title": "config",
+    "type": "object",
+    "properties": {
+        "wiliotServer": {
+            "access": 1,
+            "type": "string",
+            "description": "Wiliot environment",
+            "enum": [
+                "prod",
+                "aws-prod-cloud",
+                "test",
+                "aws-test-cloud",
+                "gcp-test-cloud",
+                "dev",
+                "aws-dev-cloud",
+                "gcp-dev-cloud",
+                "gcp-wmt-nonprod-cloud",
+                "gcp-wmt-prod-cloud"
+            ],
+            "default": "prod"
+        },
+        "useStaticLocation": {
+            "access": 1,
+            "type": "boolean",
+            "description": "Determines whether the gateway location will be set statically (fixed coordinates) from the portal or dynamically from the available location service",
+            "default": false
+        },
+        "serializationFormat": {
+            "access": 1,
+            "type": "string",
+            "description": "Determines the data serialization format in which the gateway & cloud communicate",
+            "enum": [
+                "JSON",
+                "Protobuf"
+            ],
+            "default": "Protobuf"
+        },
+        "accessControlList": {
+            "access": 1,
+            "name": "Access Control List",
+            "type": "object",
+            "description": "The Access Control List (ACL) module implemented in a Gateway controls Bridge-Gateway interactions, and reduces unnecessary traffic and cost by managing Bridge connectivity to the Cloud. Allow mode: Only the devices in the list will be forwarded by the Gateway to the Cloud. Deny mode: All devices except the ones in the list will be forwarded by the Gateway to the Cloud",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "allow",
+                        "deny"
+                    ],
+                    "default": "deny"
+                },
+                "bridgeIds": {
+                    "type": "array",
+                    "minItems": 0,
+                    "maxItems": 256,
+                    "items": {
+                        "type": "string",
+                        "pattern": "^[A-Z0-9]+$"
+                    }
+                }
+            }
+        }
+    },
+    "modules": {
+        "datapath": {
+            "displayName": "Datapath",
+            "type": "object",
+            "properties": {
+                "rssiThreshold": {
+                    "displayName": "Pixels RSSI Threshold",
+                    "access": 2,
+                    "type": "integer",
+                    "description": "The bridge will filter pixels that have weaker RSSI than the threshold, setting to 0 will disable the feature",
+                    "minimum": -127,
+                    "maximum": 0,
+                    "default": 0
+                },
+                "pacerInterval": {
+                    "displayName": "Cloud Update Rate (Pacing Interval)",
+                    "access": 3,
+                    "type": "integer",
+                    "description": "Cloud update rate of a single Wiliot IoT Pixels in seconds",
+                    "minimum": 1,
+                    "maximum": 65000,
+                    "default": 15
+                },
+                "pktFilter": {
+                    "displayName": "Packet Filter",
+                    "access": 3,
+                    "type": "string",
+                    "description": "Filter that controls which packet types are forwarded to the cloud every pacing interval",
+                    "enum": [
+                        "Random first Arriving packet",
+                        "Disable forwarding",
+                        "Temperature packet",
+                        "Temperature and Advanced packets",
+                        "Temperature Advanced and Debug packets"
+                    ],
+                    "default": "Temperature and Advanced packets"
+                },
+                "outputPower": {
+                    "displayName": "Datapath Output Power",
+                    "access": 3,
+                    "type": "string",
+                    "description": "Output power for datapath (Pixels data forwarding and bridge management traffic) relative to the device's maximum TX power. The selected value will be rounded down to the nearest lower supported TX-power step for this board, so some entries may yield the same actual output.",
+                    "enum": [
+                        "Maximum",
+                        "Maximum - 2 dBm",
+                        "Maximum - 4 dBm",
+                        "Maximum - 6 dBm",
+                        "Maximum - 8 dBm",
+                        "Maximum - 12 dBm",
+                        "Maximum - 16 dBm",
+                        "Maximum - 20 dBm"
+                    ],
+                    "default": "Maximum"
+                },
+                "pattern": {
+                    "displayName": "Datapath Pattern",
+                    "access": 1,
+                    "type": "string",
+                    "description": "datapath pattern defines sequence and channels of the datapath (echoing and bridge management) beacons.",
+                    "enum": [
+                        "Standard beaconing",
+                        "EU pattern"
+                    ],
+                    "default": "Standard beaconing"
+                },
+                "rxChannel": {
+                    "displayName": "Scanning Channel",
+                    "access": 1,
+                    "type": "string",
+                    "description": "Scanning channel where the Bridge listens for packets. Selecting a secondary advertisement channel allows partial functionality of BLE 5 protocol",
+                    "enum": [
+                        "Channel 37 - primary advertisement channel",
+                        "Channel 38 - primary advertisement channel",
+                        "Channel 39 - primary advertisement channel",
+                        "Channel 10 - 2Mbps - E2/E3 Pixels",
+                        "Channel 10 - 2Mbps - E4 Pixels",
+                        "Channel Hopping - 37 and 10",
+                        "Channel 21 - 2Mbps - E4 Pixels"
+                    ],
+                    "default": "Channel 39 - primary advertisement channel"
+                },
+                "dynPacingWindow": {
+                    "displayName": "Dynamic Pacing Time Window",
+                    "access": 1,
+                    "type": "integer",
+                    "description": "Duration for changing to Dynamic Pacing - temporarily lowering pacing (packet filtering) of a Wiliot IoT Pixel that had a location event. The unit of time is determined by the 'Dynamic Pacing Time Unit' setting (sec, min or hours). A value of 0 enables pacing for all events.",
+                    "minimum": 0,
+                    "maximum": 255,
+                    "default": 0
+                },
+                "dynPacingTimeUnit": {
+                    "displayName": "Dynamic Pacing Time Unit",
+                    "access": 1,
+                    "type": "string",
+                    "description": "Unit of time (sec, min or hours) used for the 'Dynamic Pacing Time Window', 0 for sec, 1 for min and 2 for hours",
+                    "enum": [
+                        "Seconds",
+                        "Minutes",
+                        "Hours"
+                    ],
+                    "default": "Seconds"
+                },
+                "dynPacingTrigger": {
+                    "displayName": "Dynamic Pacing Trigger",
+                    "access": 1,
+                    "type": "string",
+                    "description": "Types of Pixel events that will trigger the Bridge to move to dynamic pacing - New Pixel, Temperature Change (from Pixel), Tx Rate Change (from Pixel), RSSI Change.",
+                    "enum": [
+                        "No Trigger",
+                        "New Pixel",
+                        "Temperature Change",
+                        "New Pixel or Temperature Change",
+                        "Tx Rate Change",
+                        "New Pixel or Tx Rate Change",
+                        "Temperature Change or Tx Rate Change",
+                        "New Pixel, Temperature Change or Tx Rate Change",
+                        "RSSI Change",
+                        "New Pixel or RSSI Change",
+                        "Temperature Change or RSSI Change",
+                        "New Pixel, Temperature Change or RSSI Change",
+                        "Tx Rate or RSSI Change",
+                        "New Pixel, Tx Rate or RSSI Change",
+                        "Temperature Change, Tx Rate Change or RSSI Change",
+                        "All Triggers"
+                    ],
+                    "default": "No Trigger"
+                },
+                "rssiMovementThreshold": {
+                    "displayName": "RSSI Movement Threshold",
+                    "access": 1,
+                    "type": "integer",
+                    "description": "Deviation from mean RSSI on Bridge indicating a Pixel has moved.",
+                    "minimum": 0,
+                    "maximum": 60,
+                    "default": 6
+                },
+                "dynPacingInterval": {
+                    "displayName": "Dynamic Pacing Interval",
+                    "access": 3,
+                    "type": "integer",
+                    "description": "Cloud update rate of a single Wiliot IoT Pixels in seconds during Dynamic Pacing Time Window.",
+                    "minimum": 0,
+                    "maximum": 65000,
+                    "default": 0
+                }
+            }
+        },
+        "energy2400": {
+            "displayName": "Energizer 2.4GHz",
+            "type": "object",
+            "properties": {
+                "signalIndicatorCycle": {
+                    "displayName": "Signal Indicator Cycle",
+                    "access": 1,
+                    "type": "integer",
+                    "description": "Duration in seconds between transmission of signal indicator packets, 0 means disable signal indicator packet",
+                    "minimum": 0,
+                    "maximum": 16383,
+                    "default": 0
+                },
+                "signalIndicatorRep": {
+                    "displayName": "Signal Indicator Retransmissions",
+                    "access": 1,
+                    "type": "integer",
+                    "description": "Number of times a bridge sends signal indicator packets in each cycle, when the 'Signal Indicator Cycle' is 0 this configuration is irrelevant",
+                    "enum": [
+                        1,
+                        2,
+                        3,
+                        4
+                    ],
+                    "default": 2
+                }
+            }
+        },
+        "externalSensor": {
+            "displayName": "BLE Sensor",
+            "type": "object",
+            "properties": {
+                "sensor0": {
+                    "displayName": "Sensor0",
+                    "access": 1,
+                    "type": "string",
+                    "description": "Enable bridge to forward data from this sensor",
+                    "enum": [
+                        "No_Sensor",
+                        "MinewS1",
+                        "USB dongle ADC",
+                        "Signal Indicator",
+                        "Zebra Printer",
+                        "ERM Smart MS"
+                    ],
+                    "default": "No_Sensor"
+                },
+                "sensor1": {
+                    "displayName": "Sensor1",
+                    "access": 1,
+                    "type": "string",
+                    "description": "Enable bridge to forward data from this sensor",
+                    "enum": [
+                        "No_Sensor",
+                        "MinewS1",
+                        "USB dongle ADC",
+                        "Signal Indicator",
+                        "Zebra Printer",
+                        "ERM Smart MS"
+                    ],
+                    "default": "No_Sensor"
+                },
+                "sensor2": {
+                    "displayName": "Sensor2",
+                    "access": 1,
+                    "type": "string",
+                    "description": "Enable bridge to forward data from this sensor",
+                    "enum": [
+                        "No_Sensor",
+                        "MinewS1",
+                        "USB dongle ADC",
+                        "Signal Indicator",
+                        "Zebra Printer",
+                        "ERM Smart MS"
+                    ],
+                    "default": "No_Sensor"
+                },
+                "rssiThreshold": {
+                    "displayName": "Sensors RSSI Threshold",
+                    "access": 2,
+                    "type": "integer",
+                    "description": "The bridge will filter sensors and signal indicator packets that have weaker RSSI than the threshold, setting to 0 will disable the feature",
+                    "minimum": -127,
+                    "maximum": 0,
+                    "default": 0
+                },
+                "sub1gRssiThreshold": {
+                    "displayName": "Sub1g RSSI Threshold",
+                    "access": 2,
+                    "type": "integer",
+                    "description": "The bridge will filter signal indicator packets that have weaker RSSI than the threshold, setting to 0 will disable the feature",
+                    "minimum": -127,
+                    "maximum": 0,
+                    "default": 0
+                }
+            }
+        }
+    }
+}
