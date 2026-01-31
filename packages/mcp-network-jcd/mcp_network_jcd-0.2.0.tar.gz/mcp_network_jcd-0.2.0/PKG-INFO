@@ -1,0 +1,189 @@
+Metadata-Version: 2.4
+Name: mcp-network-jcd
+Version: 0.2.0
+Summary: MCP server for network device queries via SSH (Palo Alto firewalls, Cisco IOS)
+Author-email: JCDecaux <build-infra@jcdecaux.com>
+License: MIT License
+        
+        Copyright (c) 2026 JCDecaux
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+License-File: LICENSE
+Keywords: cisco,firewall,mcp,model-context-protocol,network,paloalto,ssh,switch
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: System Administrators
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: System :: Networking
+Classifier: Topic :: System :: Networking :: Firewalls
+Classifier: Topic :: System :: Systems Administration
+Requires-Python: >=3.12
+Requires-Dist: mcp>=1.0.0
+Requires-Dist: netmiko>=4.0.0
+Requires-Dist: pydantic>=2.0.0
+Provides-Extra: dev
+Requires-Dist: pytest-asyncio>=0.23.0; extra == 'dev'
+Requires-Dist: pytest-cov>=4.0.0; extra == 'dev'
+Requires-Dist: pytest-mock>=3.12.0; extra == 'dev'
+Requires-Dist: pytest>=8.0.0; extra == 'dev'
+Requires-Dist: ruff>=0.1.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# MCP Network JCD
+
+MCP server for querying network devices via SSH. Supports Palo Alto firewalls and Cisco IOS devices.
+
+## Installation
+
+```bash
+pip install mcp-network-jcd
+```
+
+Or from source:
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+## Configuration
+
+Set environment variables for credentials:
+
+```bash
+# Palo Alto
+export PALOALTO_USERNAME="readonly_user"
+export PALOALTO_PASSWORD="your_password"
+
+# Cisco IOS
+export CISCO_USERNAME="readonly_user"
+export CISCO_PASSWORD="your_password"
+export CISCO_ENABLE_PASSWORD="enable_secret"  # Optional
+```
+
+### Claude Desktop
+
+Add to `~/.config/claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "mcp-network-jcd": {
+      "command": "python",
+      "args": ["-m", "mcp_network_jcd.server"],
+      "env": {
+        "PALOALTO_USERNAME": "readonly_user",
+        "PALOALTO_PASSWORD": "your_password",
+        "CISCO_USERNAME": "cisco_user",
+        "CISCO_PASSWORD": "cisco_password",
+        "CISCO_ENABLE_PASSWORD": "enable_secret"
+      }
+    }
+  }
+}
+```
+
+## Tools
+
+### paloalto_query
+
+Query Palo Alto firewall via SSH.
+
+**Input:** `host*`, `commands*` (1-10), `port` (22), `timeout` (30s)
+
+**Output:** `{success, device, results[], total_duration_ms, timestamp}`
+
+#### Usage Tips
+
+Use filtered commands to avoid large outputs:
+
+```
+# Good
+show routing route | match 10.14
+test security-policy-match from ZONE1 to ZONE2 source IP destination IP protocol 6 destination-port 443
+show interface logical
+show system info
+
+# Avoid (output too large)
+show running security-policy
+show session all
+show routing route  # without filter
+```
+
+### cisco_ios_query
+
+Query Cisco IOS devices via SSH.
+
+**Input:** `host*`, `commands*` (1-10), `port` (22), `timeout` (30s)
+
+**Output:** `{success, device, results[], total_duration_ms, timestamp}`
+
+#### Usage Tips
+
+Use filtered commands to avoid large outputs:
+
+```
+# Good
+show version
+show ip interface brief
+show ip route | include 10.0
+show running-config | section interface
+show interfaces status
+
+# Avoid (output too large)
+show running-config  # full config
+show ip route  # without filter on large routing tables
+show tech-support
+```
+
+#### Enable Mode
+
+If `CISCO_ENABLE_PASSWORD` is set, the tool automatically enters privileged EXEC mode before running commands.
+
+## Error Codes
+
+Both tools return structured error responses:
+
+| Code | Description |
+|------|-------------|
+| `CONFIG_ERROR` | Missing credentials in environment |
+| `AUTH_FAILED` | Invalid username/password or enable password |
+| `CONNECTION_TIMEOUT` | Device unreachable |
+| `CONNECTION_REFUSED` | SSH connection rejected |
+| `UNKNOWN_ERROR` | Unexpected error |
+
+## Development
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Lint
+ruff check .
+```
+
+## License
+
+MIT

@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "paloalto_query_response",
+  "description": "Response from paloalto_query tool",
+  "type": "object",
+  "properties": {
+    "success": {
+      "type": "boolean",
+      "description": "Whether the overall query succeeded"
+    },
+    "device": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string",
+          "description": "Device hostname or IP"
+        },
+        "port": {
+          "type": "integer",
+          "description": "SSH port used"
+        }
+      },
+      "required": ["host", "port"],
+      "additionalProperties": false,
+      "description": "Device connection info (no credentials)"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "The executed command"
+          },
+          "success": {
+            "type": "boolean",
+            "description": "Whether this command succeeded"
+          },
+          "output": {
+            "type": "string",
+            "description": "Command output (present if any output received, may coexist with error on partial results)"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message (present if success=false)"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Command execution time in milliseconds"
+          }
+        },
+        "required": ["command", "success", "duration_ms"],
+        "additionalProperties": false
+      },
+      "description": "Results for each command (present if connection succeeded)"
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "CONNECTION_TIMEOUT",
+            "AUTH_FAILED",
+            "CONNECTION_REFUSED",
+            "COMMAND_FAILED",
+            "VALIDATION_ERROR",
+            "CONFIG_ERROR",
+            "UNKNOWN_ERROR"
+          ],
+          "description": "Error code"
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable error message"
+        }
+      },
+      "required": ["code", "message"],
+      "additionalProperties": false,
+      "description": "Connection-level error (present if success=false)"
+    },
+    "total_duration_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total query duration in milliseconds"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of query completion"
+    }
+  },
+  "required": ["success", "device", "total_duration_ms", "timestamp"],
+  "additionalProperties": false
+}
