@@ -1,0 +1,90 @@
+# What is String Grammar Fuzzy Clustering?
+
+String Grammar Fuzzy Clustering is a clustering framework designed for syntactic or structural pattern recognition, where each data instance is represented not as a numeric vector but as a string that encodes structural information.
+
+Unlike conventional numerical clustering method (e.g., Fuzzy C-Means), which assume that data have a fixed-length feature vector whereas structural clustering method operates directly on string data whose lengths and internal structures may vary.
+
+In this approach, each pattern is described by a sequence of primitives (symbols) defined by grammatical rules. This is similar to how a sentence is formed from characters following syntax rules.
+
+To measure similarity between strings, the method employs the Levenshtein distance[1], which counts the minimum number of edit operations (insertions, deletions, substitutions) required to transform on string into another.
+
+The "fuzzy" aspect of this framework allows each string to belong to multiple clusters, with a membership degree that reflects how strongly it is associated with each cluster. This provides a more flexible and realistic clustering behavior compared to traditional "hard" clustering, which forces each sample to belong to only one group.
+
+# About This Library
+
+This Python library introduces an algorithm belonging to the String Grammar Fuzzy Clustering framework, namely the String Grammar Possibilistic Fuzzy C-Medians (sgPFCMed).
+
+## String Grammar Possibilistic Fuzzy C-Medians (sgPFCMed)[2] 
+
+The sgPFCMed algorithm enhances the sgFCMed [3] algorithm by integrating possibilistic clustering theory, with both membership and typicality values (as in [4]) for each string. While membership reflects relative association of a string across clusters, typicality value represent a string within a single cluster. This combination allows sgPFCMed to produce more reliable and stable clustering results, especially in datasets with uncertain or overlapping string patterns.
+
+**Key Features:**
+- Integrates membership (U) and typicality (T) for dual uncertainty modeling
+- Automatically updates γ (gamma) parameters per cluster
+- Better resilience to noisy or ambiguous strings
+- Parallelized medoid and modified median updates
+- Suitable for real-world or imperfect string data where overlap and noise occur
+
+**\*\*Please be noted that this sgPFCMed can be used for academic and research purposes only. Please also cite this paper [2].\*\***
+
+## Reference
+
+[1] S. K. Fu, Syntactic Pattern Recognition and Applications, 1982, Prentice-Hall, Zbl0521.68091.
+
+[2] Atcharin Klomsae, Sansanee Auephanwiriyakul, and Nipon Theera-Umpon, “A string grammar possibilistic-fuzzy C-medians”, Soft Computing , vol. 23, no. 17, pp. 7637 – 7653, 2019: http://doi.org/10.1007/s00500-018-3392-6.
+
+[3] Atcharin Klomsae, Sansanee Auephanwiriyakul, and Nipon Theera-Umpon, “A Novel String Grammar Fuzzy C-Medians,” Proceedings of the 2015 IEEE International Conference on Fuzzy Systems, Istanbul, Turkey, August 2015.
+
+[4] N. R. Pal, K. Pal, J. M. Keller and J. C. Bezdek, "A possibilistic fuzzy c-means clustering algorithm," in IEEE Transactions on Fuzzy Systems, vol. 13, no. 4, pp. 517-530, Aug. 2005
+
+# Installation
+
+You can install the library using pip:
+
+```bash
+pip install sgPFCMed
+```
+
+# USAGE
+
+## Example Code
+
+```python
+import random
+from sgPFCMed import SGPFCMed # Import the clustering class
+
+if __name__ == "__main__":
+    # Set random seed for reproducibility
+    random.seed(42)
+
+    # Define a list of strings to cluster
+    data = ["book", "back", "boon", "cook", "look", "cool", "kick", "lack", "rack", "tack"]
+
+    # Create the model with 2 clusters and fuzzifier m=2.0
+    model = SGPFCMed(C=2, m=2.0)   
+
+    # Fit the model on the data
+    model.fit(data)
+
+    # Print the final prototype strings representing each cluster
+    print("Prototypes:", model.prototypes())
+
+    # Print the fuzzy membership matrix for each input string
+    print("\nMembership Matrix (U):")
+    for s, u in zip(data, model.membership()):
+        print(f"{s:>6} → {[round(val, 3) for val in u]}")
+
+    # Print the typicality matrix for each input string
+    print("\nTypicality Matrix (T):")
+    for s, t in zip(data, model.typicality()):
+        print(f"{s:>6} → {[round(val, 3) for val in t]}")
+
+    # Define new strings to classify using the trained model
+    new_data = ["hack", "rook", "cook"]
+
+    # Predict the cluster index (0 or 1) for each new string
+    preds = model.predict(new_data, model.prototypes())
+    print("\nPredictions:")
+    for s, c in zip(new_data, preds):
+        print(f"{s} → Cluster {c+1}")
+```
