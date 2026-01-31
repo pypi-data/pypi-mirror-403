@@ -1,0 +1,60 @@
+# PairCoder Containment Image
+# Minimal environment for running Claude Code in contained autonomy mode
+# Uses native Claude Code installer (npm is deprecated)
+
+FROM python:3.14.2-slim-bookworm
+
+LABEL maintainer="BPS AI Software"
+LABEL org.opencontainers.image.source="https://github.com/BPSAI/paircoder"
+LABEL org.opencontainers.image.description="Contained autonomy environment with Claude Code"
+LABEL org.opencontainers.image.version="2.9.2-native"
+
+# Install only what's needed:
+# - curl/ca-certificates: Required for native installer download
+# - git: Required for Claude Code operations
+# - iptables/dnsutils: Required for network allowlist
+# NOTE: nodejs/npm are NOT needed - native installer is a standalone binary
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    iptables \
+    dnsutils \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create non-root user for safer execution
+RUN useradd -m -s /bin/bash sandbox \
+    && mkdir -p /workspace \
+    && chown sandbox:sandbox /workspace
+
+# Switch to non-root user BEFORE installing Claude Code
+# (native installer installs to user's home directory)
+USER sandbox
+WORKDIR /home/sandbox
+
+# Set PATH early so subsequent RUN commands can find claude
+# Native installer may use ~/.local/bin or ~/.claude/bin
+ENV PATH="/home/sandbox/.local/bin:/home/sandbox/.claude/bin:${PATH}"
+
+# Allow pinning Claude Code version during builds (default: latest)
+ARG CLAUDE_VERSION=latest
+
+# Install Claude Code using native installer (NOT npm)
+# The installer puts the binary at ~/.local/bin/claude or ~/.claude/bin/claude
+RUN curl -fsSL https://claude.ai/install.sh | bash -s -- ${CLAUDE_VERSION}
+
+# Verify installation is native (not Node-based)
+# This will fail the build if we accidentally got the npm version
+RUN CLAUDE_BIN=$(which claude) && \
+    echo "Found claude at: $CLAUDE_BIN" && \
+    head -n 1 "$CLAUDE_BIN" | tee /tmp/claude_shebang && \
+    ! grep -q "env node" /tmp/claude_shebang && \
+    claude --version
+
+# Skip update checks inside container (we control the version via image tags)
+ENV CLAUDE_CODE_SKIP_UPDATE_CHECK=1
+
+WORKDIR /workspace
+
+CMD ["bash"]

@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block title %}Token Budget &amp; Model Routing - PairCoder Setup{% endblock %}
+
+{% block content %}
+<section class="budget-page">
+    <div class="page-header">
+        <h2>Token Budget &amp; Model Routing</h2>
+        <p class="page-description">Configure spending limits and choose which models power each role.</p>
+    </div>
+
+    {% if is_locked %}
+    {% include "partials/locked_overlay.html" %}
+    <div class="form-actions navigation-buttons">
+        <button type="button" class="btn btn-secondary" onclick="window.location.href='/wizard/github'">Back</button>
+    </div>
+    {% else %}
+    <form id="budget-form" class="wizard-form">
+        <div class="form-group">
+            <label>Token Budget</label>
+
+            <div class="slider-field">
+                <div class="slider-header">
+                    <label for="warning-threshold">Warning Threshold</label>
+                    <span id="warning-value" class="slider-value">75%</span>
+                </div>
+                <input type="range" id="warning-threshold" name="warning_threshold"
+                       min="10" max="100" value="75" step="5" class="form-slider"
+                       oninput="updateSlider('warning')">
+                <p class="help-text">Alert when token usage reaches this percentage of the budget.</p>
+            </div>
+
+            <div class="slider-field">
+                <div class="slider-header">
+                    <label for="critical-threshold">Critical Threshold</label>
+                    <span id="critical-value" class="slider-value">90%</span>
+                </div>
+                <input type="range" id="critical-threshold" name="critical_threshold"
+                       min="10" max="100" value="90" step="5" class="form-slider"
+                       oninput="updateSlider('critical')">
+                <p class="help-text">Enforce budget limits when usage reaches this percentage.</p>
+            </div>
+        </div>
+
+        <div class="section-divider"></div>
+
+        <div class="form-group">
+            <label>Enforcement Mode</label>
+            <div class="mode-options">
+                <label class="mode-option">
+                    <input type="radio" name="enforcement_mode" value="warn">
+                    <div class="mode-card">
+                        <h4>Warnings Only</h4>
+                        <p>Show alerts but allow work to continue.</p>
+                    </div>
+                </label>
+                <label class="mode-option">
+                    <input type="radio" name="enforcement_mode" value="soft" checked>
+                    <div class="mode-card">
+                        <h4>Soft Blocking</h4>
+                        <p>Warn and require confirmation to continue.</p>
+                    </div>
+                </label>
+                <label class="mode-option">
+                    <input type="radio" name="enforcement_mode" value="hard">
+                    <div class="mode-card">
+                        <h4>Hard Blocking</h4>
+                        <p>Block work when over budget. No bypass.</p>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        <div class="section-divider"></div>
+
+        <div class="form-group">
+            <label>Model Routing</label>
+            <div class="mode-options">
+                <label class="mode-option">
+                    <input type="radio" name="model_preset" value="recommended" checked>
+                    <div class="mode-card">
+                        <h4>Recommended</h4>
+                        <p>Balance cost and quality. Best for most teams.</p>
+                    </div>
+                </label>
+                <label class="mode-option">
+                    <input type="radio" name="model_preset" value="quality">
+                    <div class="mode-card">
+                        <h4>Best Quality</h4>
+                        <p>Always use the best models available.</p>
+                    </div>
+                </label>
+                <label class="mode-option">
+                    <input type="radio" name="model_preset" value="fastest">
+                    <div class="mode-card">
+                        <h4>Fastest</h4>
+                        <p>Prioritize speed and lower cost.</p>
+                    </div>
+                </label>
+            </div>
+
+            <div class="advanced-toggle">
+                <button type="button" class="btn-link" onclick="toggleAdvanced()">
+                    <span id="advanced-arrow">&#9654;</span> Advanced: Per-role model selection
+                </button>
+            </div>
+
+            <div id="advanced-models" class="advanced-section" style="display:none;">
+                <div class="role-model-row">
+                    <label for="navigator-model">Navigator</label>
+                    <select id="navigator-model" name="navigator_model" class="form-input form-select">
+                        <option value="claude-sonnet-4-5" selected>claude-sonnet-4-5</option>
+                        <option value="claude-opus-4-5">claude-opus-4-5</option>
+                        <option value="claude-haiku-4-5">claude-haiku-4-5</option>
+                    </select>
+                </div>
+                <div class="role-model-row">
+                    <label for="driver-model">Driver</label>
+                    <select id="driver-model" name="driver_model" class="form-input form-select">
+                        <option value="claude-sonnet-4-5" selected>claude-sonnet-4-5</option>
+                        <option value="claude-opus-4-5">claude-opus-4-5</option>
+                        <option value="claude-haiku-4-5">claude-haiku-4-5</option>
+                    </select>
+                </div>
+                <div class="role-model-row">
+                    <label for="reviewer-model">Reviewer</label>
+                    <select id="reviewer-model" name="reviewer_model" class="form-input form-select">
+                        <option value="claude-haiku-4-5" selected>claude-haiku-4-5</option>
+                        <option value="claude-sonnet-4-5">claude-sonnet-4-5</option>
+                        <option value="claude-opus-4-5">claude-opus-4-5</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-divider"></div>
+
+        <div class="form-group">
+            <label>Cost Tracking</label>
+            <div class="toggle-item">
+                <div class="toggle-switch">
+                    <input type="checkbox" id="cost-tracking" name="cost_tracking" checked>
+                    <label for="cost-tracking" class="toggle-label"></label>
+                </div>
+                <div class="toggle-info">
+                    <h4>Track estimated costs per session</h4>
+                    <p>Monitor token usage and estimated costs in real time.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-actions navigation-buttons">
+            <button type="button" class="btn btn-secondary" onclick="navigateBack()">Back</button>
+            <div class="nav-right">
+                <button type="button" class="btn btn-ghost" onclick="skipBudget()">Skip</button>
+                <button type="submit" class="btn btn-primary">Next</button>
+            </div>
+        </div>
+    </form>
+</section>
+
+<script>
+function updateSlider(type) {
+    var slider = document.getElementById(type + '-threshold');
+    var display = document.getElementById(type + '-value');
+    display.textContent = slider.value + '%';
+}
+
+function toggleAdvanced() {
+    var section = document.getElementById('advanced-models');
+    var arrow = document.getElementById('advanced-arrow');
+    if (section.style.display === 'none') {
+        section.style.display = '';
+        arrow.innerHTML = '&#9660;';
+    } else {
+        section.style.display = 'none';
+        arrow.innerHTML = '&#9654;';
+    }
+}
+
+// Update per-role models when preset changes
+document.querySelectorAll('input[name="model_preset"]').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+        var presets = {
+            recommended: {navigator: 'claude-sonnet-4-5', driver: 'claude-sonnet-4-5', reviewer: 'claude-haiku-4-5'},
+            quality: {navigator: 'claude-opus-4-5', driver: 'claude-opus-4-5', reviewer: 'claude-sonnet-4-5'},
+            fastest: {navigator: 'claude-haiku-4-5', driver: 'claude-haiku-4-5', reviewer: 'claude-haiku-4-5'}
+        };
+        var p = presets[this.value];
+        if (p) {
+            document.getElementById('navigator-model').value = p.navigator;
+            document.getElementById('driver-model').value = p.driver;
+            document.getElementById('reviewer-model').value = p.reviewer;
+        }
+    });
+});
+
+function skipBudget() {
+    fetch('/api/budget', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({skip: true})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            window.location.href = data.next_url || '/wizard/mcp';
+        }
+    })
+    .catch(function() {
+        window.location.href = '/wizard/mcp';
+    });
+}
+
+document.getElementById('budget-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    var payload = {
+        warning_threshold: parseInt(document.getElementById('warning-threshold').value),
+        critical_threshold: parseInt(document.getElementById('critical-threshold').value),
+        enforcement_mode: (document.querySelector('input[name="enforcement_mode"]:checked') || {}).value || 'soft',
+        model_preset: (document.querySelector('input[name="model_preset"]:checked') || {}).value || 'recommended',
+        navigator_model: document.getElementById('navigator-model').value,
+        driver_model: document.getElementById('driver-model').value,
+        reviewer_model: document.getElementById('reviewer-model').value,
+        cost_tracking: document.getElementById('cost-tracking').checked
+    };
+
+    fetch('/api/budget', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            window.location.href = data.next_url || '/wizard/mcp';
+        } else {
+            alert('Error: ' + (data.error || 'Failed to save budget settings'));
+        }
+    })
+    .catch(function() {
+        alert('Failed to save settings. Please try again.');
+    });
+});
+
+function navigateBack() {
+    window.location.href = '/wizard/github';
+}
+</script>
+{% endif %}
+{% endblock %}
