@@ -1,0 +1,44 @@
+name: publish-on-tag
+
+on:
+  push:
+    tags:
+      - 'ai-sidekick-v*'
+  workflow_dispatch:
+    inputs:
+      pypi-publish:
+        description: 'Try to publish to PyPI'
+        default: false
+        type: boolean
+
+permissions:
+  id-token: write # Required for OIDC
+  contents: read
+
+jobs:
+  pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    if: ${{ (github.event_name != 'workflow_dispatch') || (inputs.pypi-publish && always()) }}
+    environment:
+      # Create this environment in the GitHub repository under Settings -> Environments
+      name: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - name: Install Python 3.13
+        run: uv python install 3.13
+      - name: Build
+        run: uv build
+      # Check that basic features work and we didn't miss to include crucial files
+      - name: Smoke test (wheel)
+        run: uv run --isolated --no-project --with dist/*.whl tests/smoke_test.py
+      - name: Smoke test (source distribution)
+        run: uv run --isolated --no-project --with dist/*.tar.gz tests/smoke_test.py
+      - name: Publish
+        run: uv publish
