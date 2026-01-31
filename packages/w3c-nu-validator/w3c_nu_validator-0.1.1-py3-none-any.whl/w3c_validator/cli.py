@@ -1,0 +1,440 @@
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import requests
+
+W3C_NU_ENDPOINT = "https://validator.w3.org/nu/"
+
+
+@dataclass
+class MessageCounts:
+    """Lightweight dataclass, with dunders generated automatically
+    through the use of `@dataclass`.
+    Holds the number of each type of message from a single URL run.
+    """
+
+    errors: int
+    infos: int
+    non_document_errors: int
+
+
+@dataclass
+class ValidationResult:
+    """Hold the complete validation result from a single URL run."""
+
+    url: str
+    counts: MessageCounts
+    messages: list[dict[str, Any]]
+
+
+def read_from_file(file_path: str) -> list[str]:
+    """Read URLs from a text file (one URL per line).
+
+    Rules:
+    - blank lines ignored
+    - lines starting with '#' are ignored
+    - whitespace is stripped
+
+    Args:
+        file_path (str): Absolute or relative file path
+
+    Returns:
+        list[str]: List of URLs once processed
+    """
+
+    path = Path(file_path)
+
+    if not path.exists():
+        raise FileNotFoundError(f"URL file not found: {file_path}")
+
+    if not path.is_file():
+        raise ValueError(f"Path is not a file: {file_path}")
+
+    urls: list[str] = []
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+
+        if not line:
+            continue
+        if line.startswith("#"):
+            continue
+        urls.append(line)
+
+    return urls
+
+
+def fetch_validation_json(
+    document_url: str,
+    *,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    """Make the single request for a single URL
+
+    Args:
+        document_url (str): The URL to validate
+        timeout_seconds (int): Number of seconds allowed before timeout
+
+    Returns:
+        dict[str, Any]: Parsed JSON Response object
+    """
+    response = requests.get(
+        W3C_NU_ENDPOINT,
+        params={
+            "doc": document_url,
+            "out": "json",
+        },
+        timeout=timeout_seconds,
+        headers={
+            "User-Agent": "w3c-nu-validator-client/1.0",
+        },
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def count_messages(payload: dict[str, Any]) -> MessageCounts:
+    messages = payload.get("messages", [])
+
+    error_count = 0
+    info_count = 0
+    non_doc_count = 0
+
+    for m in messages:
+        m_type = m.get("type", "info")
+        if m_type == "error":
+            error_count += 1
+        elif m_type == "non-document-error":
+            non_doc_count += 1
+        else:
+            info_count += 1
+
+    return MessageCounts(
+        errors=error_count,
+        infos=info_count,
+        non_document_errors=non_doc_count,
+    )
+
+
+def get_location(
+    message: dict[str, Any],
+) -> tuple[
+    int | None,
+    int | None,
+    int | None,
+    int | None,
+]:
+    """Access various error location points using keys in message dict.
+    Each access has fallback.
+
+    Tuple chosen as return as data is temporary, positional and immediately unpacked.
+
+    Args:
+        message (dict[str, Any]): Message from validation response
+
+    Returns:
+        tuple[ int | None, int | None, int | None, int | None, ]: Tuple containing all 4 location pooints.
+    """
+    first_line = message.get("firstLine") or message.get("line")
+    last_line = message.get("lastLine") or message.get("line")
+
+    first_col = message.get("firstColumn") or message.get("column")
+    last_col = message.get("lastColumn") or message.get("column")
+
+    return first_line, last_line, first_col, last_col
+
+
+def collapse_blank_lines(text: str) -> str:
+    """Collapse multiple consecutive blank lines into a single blank line
+    Preserves indentation and non empty lines
+
+    Args:
+        text (str): Input HTML extract
+
+    Returns:
+        str: HTML extract with empty blank lines collapsed
+    """
+
+    lines = text.splitlines()
+
+    normalised_lines: list[str] = []
+
+    for line in lines:
+        is_blank = not line.strip()
+
+        if is_blank:
+            continue
+
+        normalised_lines.append(line.rstrip())
+
+    return "\n".join(normalised_lines)
+
+
+def print_error_messages(payload: dict[str, Any]) -> None:
+    """Read and print any error messages from the parsed response JSON payload.
+    Downstream expects an iterable, so default from get() is empty list.
+
+    Args:
+        payload (dict[str,Any]): Parsed JSON payload
+    """
+    # print(f"payload: ", payload)
+    messages = payload.get("messages", [])
+
+    # print(messages)
+
+    # Iterate over messages, skipping non error messages
+    for m in messages:
+        # print(f"Type: {m.get("type")}")
+        if m.get("type") != "error":
+            continue
+
+        (
+            first_line,
+            last_line,
+            first_col,
+            last_col,
+        ) = get_location(m)
+
+        text = (m.get("message") or "").strip()
+
+        # Use blank lines helper
+        raw_extract = m.get("extract") or ""
+        extract = collapse_blank_lines(raw_extract).strip()
+        # extract = (m.get("extract") or "").strip()
+
+        line_column_coordinates: list[str] = []
+        if first_line is not None and last_line is not None:
+            if first_line == last_line:
+                line_column_coordinates.append(f"line {last_line}")
+            else:
+                line_column_coordinates.append(f"lines {first_line}-{last_line}")
+        elif last_line is not None:
+            line_column_coordinates.append(f"line {last_line}")
+
+        if first_col is not None and last_col is not None:
+            if first_col == last_col:
+                line_column_coordinates.append(f"column: {last_col}")
+            else:
+                line_column_coordinates.append(f"columns {first_col}-{last_col}")
+        elif last_col is not None:
+            line_column_coordinates.append(f"column: {last_col}")
+
+        location = (
+            f" ({', '.join(line_column_coordinates)})"
+            if line_column_coordinates
+            else ""
+        )
+        print(f"    - ERROR{location}: {text}")
+
+        if extract:
+            print(f"      Extract:\n{extract}\n")
+
+
+def write_full_report(
+    results: list[ValidationResult],
+    *,
+    output_path: str,
+) -> None:
+    delimeter = "=" * 80
+
+    # Open output_path and assign to fh (file handle)
+    with open(output_path, "w", encoding="utf-8") as fh:
+        for result in results:
+            # Write section header
+            fh.write(f"{delimeter}\n")
+            fh.write(f"{result.url}\n")
+            fh.write(f"{delimeter}\n")
+
+            # Write the counts
+            fh.write(
+                f"Errors: {result.counts.errors} | "
+                f"Infos: {result.counts.infos} | "
+                f"Non-doc: {result.counts.non_document_errors}\n\n"
+            )
+
+            # Write each individual message
+            for message in result.messages:
+                if message.get("type") != "error":
+                    continue
+
+                # Use helpers to extract
+                first_line, last_line, first_col, last_col = get_location(message)
+                text = (message.get("message") or "").strip()
+                raw_extract = message.get("extract") or ""
+                extract = collapse_blank_lines(raw_extract).strip()
+
+                # Extract line-column co-ordinates
+                line_column_coordinates: list[str] = []
+                if first_line is not None and last_line is not None:
+                    if first_line == last_line:
+                        line_column_coordinates.append(f"line {last_line}")
+                    else:
+                        line_column_coordinates.append(
+                            f"lines {first_line}-{last_line}"
+                        )
+                elif last_line is not None:
+                    line_column_coordinates.append(f"line {last_line}")
+
+                if first_col is not None and last_col is not None:
+                    if first_col == last_col:
+                        line_column_coordinates.append(f"column: {last_col}")
+                    else:
+                        line_column_coordinates.append(
+                            f"columns {first_col}-{last_col}"
+                        )
+                elif last_col is not None:
+                    line_column_coordinates.append(f"column: {last_col}")
+
+                location = (
+                    f" ({', '.join(line_column_coordinates)})"
+                    if line_column_coordinates
+                    else ""
+                )
+
+                fh.write(f"- ERROR{location}: {text}\n")
+
+                if extract:
+                    fh.write(f"  Markup Extract:\n")
+                    for line in extract.splitlines():
+                        fh.write(f"    {line}\n")
+                fh.write("\n")
+
+            if result.counts.errors == 0:
+                fh.write("No validation errors found.\n\n")
+
+        pass
+
+
+def validate_one(url: str, *, timeout_seconds: int) -> int:
+    """Validate a single deployed URL's markup
+    Calls the W3C_NU_ENDPOINT with a GET request to validate the markup at the `url`
+
+    Args:
+        url (str): The deployed URL in question
+
+    Returns:
+        ValidationResult: A complete validation result dataclass instance.
+    """
+
+    payload = fetch_validation_json(url, timeout_seconds=timeout_seconds)
+    messages = payload.get("messages", [])
+    counts = count_messages(payload)
+
+    return ValidationResult(
+        url=url,
+        counts=counts,
+        messages=messages,
+    )
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    """Builds the command line argument parser.
+
+    Returns:
+        argparse.ArgumentParser: returns an instance of the ArgumentParser class
+    """
+    parser = argparse.ArgumentParser(
+        prog="w3c-nu-validator",
+        description="Validate deployed URLs using the W3C Nu HTML Checker (JSON output).",
+    )
+
+    parser.add_argument(
+        "urls",
+        nargs="*",
+        help="One or more deployed URLs to validate.",
+    )
+
+    parser.add_argument(
+        "--timeout",
+        "-t",
+        type=int,
+        default=30,
+        help="Request timeout in seconds (default: 30).",
+    )
+
+    parser.add_argument(
+        "--out",
+        "-o",
+        metavar="PATH",
+        help="Write full validation report to a file",
+    )
+
+    parser.add_argument(
+        "--read-file",
+        "-r",
+        dest="read_from_file",
+        metavar="FILEPATH",
+        help="Read from an input file (one URL per line, ignores whitespace and comments[#])."
+        "\nFollows standard Unix relative or absolute file paths.",
+    )
+
+    return parser
+
+
+# Standard entrypoint convention
+def main() -> int:
+    """Conventional entrypoint for program
+
+    Returns:
+        int: standard exit code convention - 0 = success; non-zero = Error
+    """
+
+    all_urls: list[str] = []
+
+    parser = build_arg_parser()
+    args = parser.parse_args()
+
+    if args.read_from_file:
+        try:
+            file_urls = read_from_file(args.read_from_file)
+        except (FileNotFoundError, ValueError) as exc:
+            parser.error(str(exc))
+            # Unreachable but keeps type checkers happy
+            return 2
+        all_urls.extend(file_urls)
+
+    all_urls.extend(args.urls)
+
+    deduped_urls: list[str] = []
+    seen: set[str] = set()
+
+    for url in all_urls:
+        if url in seen:
+            continue
+        seen.add(url)
+        deduped_urls.append(url)
+
+    if not deduped_urls:
+        parser.error("No URLs provided. Pass URLs as arguments or use -r/--read-file")
+
+    results: list[ValidationResult] = []
+    exit_code = 0
+
+    for url in deduped_urls:
+        result = validate_one(url, timeout_seconds=args.timeout)
+        results.append(result)
+        if result.counts.errors:
+            exit_code = 1
+
+        # Still print summary to console
+        print(
+            f"{url}\n"
+            f"  Errors: {result.counts.errors} | "
+            f"Info/Warnings: {result.counts.infos} | "
+            f"Non-doc: {result.counts.non_document_errors}"
+        )
+
+    if args.out:
+        write_full_report(results, output_path=args.out)
+        print(f"\nFull validation report written to: {args.out}")
+
+    return exit_code
+
+
+# Check code is not being run as part of an import
+if __name__ == "__main__":
+    raise SystemExit(main())
