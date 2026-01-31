@@ -1,0 +1,141 @@
+{% extends 'base.html' %}
+
+{% block title %}Modules{% endblock %}
+
+{% block head %}
+<link rel="stylesheet"
+    href="{{ url_for('static', filename='css/modules/index.css') }}?v={{ range(1, 10000) | random }}">
+{% endblock %}
+
+{% block content %}
+{% set total_regs = namespace(value=0) %}
+{% set cdc_count = namespace(value=0) %}
+{% for m in modules %}
+{% set total_regs.value = total_regs.value + m.registers|length %}
+{% if m.cdc_enabled %}
+{% set cdc_count.value = cdc_count.value + 1 %}
+{% endif %}
+{% endfor %}
+
+<div class="page-header mb-4">
+    <h1>AXI Register Map Dashboard</h1>
+    <p>Managed by Axion HDL</p>
+</div>
+
+{% if analysis_error %}
+<div class="alert alert-danger mb-4" role="alert">
+    <div class="d-flex align-items-center mb-2">
+        <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i>
+        <strong>Analysis Error</strong>
+    </div>
+    <pre class="mb-0 p-3 rounded">{{ analysis_error }}</pre>
+</div>
+{% endif %}
+
+<!-- Compact Statistics Bar -->
+<div class="stats-bar d-flex flex-wrap gap-4 align-items-center py-3 px-4 mb-4">
+    <div class="stat-mini d-flex align-items-center gap-2">
+        <i class="bi bi-box-seam stat-icon-primary"></i>
+        <span class="stat-label">Modules</span>
+        <span class="stat-value">{{ modules|length }}</span>
+    </div>
+    <div class="stat-mini d-flex align-items-center gap-2">
+        <i class="bi bi-list-columns-reverse stat-icon-primary"></i>
+        <span class="stat-label">Registers</span>
+        <span class="stat-value">{{ total_regs.value }}</span>
+    </div>
+    <div class="stat-mini d-flex align-items-center gap-2">
+        <i class="bi bi-arrow-left-right stat-icon-secondary"></i>
+        <span class="stat-label">CDC</span>
+        <span class="stat-value">{{ cdc_count.value }}</span>
+    </div>
+    {% if total_errors > 0 %}
+    <div class="stat-mini d-flex align-items-center gap-2">
+        <i class="bi bi-x-circle stat-icon-error"></i>
+        <span class="stat-label">Errors</span>
+        <span class="stat-value stat-value-error">{{ total_errors }}</span>
+    </div>
+    {% endif %}
+
+    {% if total_warnings > 0 %}
+    <div class="stat-mini d-flex align-items-center gap-2">
+        <i class="bi bi-exclamation-triangle stat-icon-warning"></i>
+        <span class="stat-label">Warnings</span>
+        <span class="stat-value stat-value-warning">{{ total_warnings }}</span>
+    </div>
+    {% endif %}
+
+    {% if total_errors == 0 and total_warnings == 0 %}
+    <div class="stat-mini d-flex align-items-center gap-2">
+        <i class="bi bi-check-circle stat-icon-success"></i>
+        <span class="stat-label">Issues</span>
+        <span class="stat-value stat-value-success">0</span>
+    </div>
+    {% endif %}
+</div>
+
+<div class="section-header d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 gap-3">
+    <div class="d-flex align-items-center gap-4 flex-grow-1">
+        <h2 class="m-0 border-0 p-0 text-nowrap">Modules</h2>
+        <div class="search-wrapper position-relative flex-grow-1" style="max-width: 400px;">
+            <i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
+            <input type="text" id="moduleSearch" class="form-control ps-5" placeholder="Search modules...">
+        </div>
+    </div>
+    <a href="/module/new" class="btn btn-primary text-nowrap">
+        <i class="bi bi-plus me-1"></i>New Module
+    </a>
+</div>
+
+
+<div class="module-list">
+    {% for module in modules %}
+    <a href="/module/{{ module.name }}?file={{ module.file | urlencode }}"
+        class="module-card d-block text-decoration-none p-3 mb-2{% if module.rule_errors > 0 %} has-errors{% elif module.rule_warnings > 0 %} has-warnings{% endif %}">
+
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <div class="d-flex align-items-center gap-2">
+                <span class="module-name-text">{{ module.name }}</span>
+                {% if module.cdc_enabled %}
+                <span class="badge badge-cdc">CDC</span>
+                {% endif %}
+                {% if module.rule_errors > 0 %}
+                <span class="badge badge-error">{{ module.rule_errors }} Error{{ 's' if module.rule_errors > 1 else ''
+                    }}</span>
+                {% endif %}
+                {% if module.rule_warnings > 0 %}
+                <span class="badge badge-warning">{{ module.rule_warnings }} Warning{{ 's' if module.rule_warnings > 1
+                    else '' }}</span>
+                {% endif %}
+            </div>
+            <div class="module-metadata d-flex gap-3 align-items-center">
+                <span class="font-monospace text-truncate" style="max-width: 150px;" title="{{ module.file }}">{{
+                    module.file | basename }}</span>
+                <span class="font-monospace">0x{{ '%04X' % module.base_address if module.base_address else '0000'
+                    }}</span>
+                <span>{{ module.registers|length }} regs</span>
+            </div>
+        </div>
+
+        <div class="register-preview d-flex flex-wrap gap-2">
+            {% for reg in module.registers[:6] %}
+            <span class="font-monospace">{{ reg.name }}</span>
+            {% endfor %}
+            {% if module.registers|length > 6 %}
+            <span class="more-indicator">+{{ module.registers|length - 6 }} more</span>
+            {% endif %}
+        </div>
+    </a>
+    {% else %}
+    <div class="feature-card text-center p-5">
+        <i class="bi bi-inbox fs-1 text-muted mb-3 d-block"></i>
+        <h3 class="text-muted">No modules found</h3>
+        <p class="text-secondary">Start by adding a new module or loading a source file.</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/modules/index.js') }}?v={{ range(1, 10000) | random }}"></script>
+{% endblock %}
