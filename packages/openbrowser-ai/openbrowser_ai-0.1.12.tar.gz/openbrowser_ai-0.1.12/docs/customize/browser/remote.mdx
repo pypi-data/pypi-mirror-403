@@ -1,0 +1,97 @@
+---
+title: "Remote Browser"
+description: "Connect to remote browsers via CDP"
+icon: "server"
+mode: "wide"
+---
+
+### Connect via CDP URL
+
+Connect to any remote browser using Chrome DevTools Protocol (CDP):
+
+```python
+from openbrowser import Agent, Browser, ChatGoogle
+
+# Connect to a remote browser via CDP URL
+browser = Browser(
+    cdp_url="http://remote-server:9222"
+)
+
+agent = Agent(
+    task="Your task here",
+    llm=ChatGoogle(),
+    browser=browser,
+)
+```
+
+### Start Chrome with Remote Debugging
+
+To enable CDP on a local or remote Chrome instance:
+
+```bash
+# macOS
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
+
+# Linux
+google-chrome --remote-debugging-port=9222
+
+# Windows
+chrome.exe --remote-debugging-port=9222
+```
+
+### Third-Party Cloud Browsers
+
+You can use any cloud browser service that provides a CDP URL:
+
+- **Browserless** - `cdp_url="wss://chrome.browserless.io?token=YOUR_TOKEN"`
+- **BrowserStack** - Connect via their CDP endpoint
+- **LambdaTest** - Connect via their CDP endpoint
+- **Any Docker-based Chrome** - Run headless Chrome in a container
+
+### Proxy Connection
+
+```python
+from openbrowser import Agent, Browser, ChatGoogle
+from openbrowser.browser import ProxySettings
+
+browser = Browser(
+    headless=False,
+    proxy=ProxySettings(
+        server="http://proxy-server:8080",
+        username="proxy-user",
+        password="proxy-pass"
+    ),
+    cdp_url="http://remote-server:9222"
+)
+
+agent = Agent(
+    task="Your task here",
+    llm=ChatGoogle(),
+    browser=browser,
+)
+```
+
+### Docker Setup
+
+Run Chrome in a Docker container:
+
+```dockerfile
+FROM zenika/alpine-chrome:latest
+
+# Expose CDP port
+EXPOSE 9222
+
+# Start Chrome with remote debugging
+CMD ["chromium-browser", "--headless", "--disable-gpu", "--remote-debugging-address=0.0.0.0", "--remote-debugging-port=9222"]
+```
+
+```bash
+docker build -t chrome-cdp .
+docker run -p 9222:9222 chrome-cdp
+```
+
+Then connect:
+
+```python
+browser = Browser(cdp_url="http://localhost:9222")
+```
