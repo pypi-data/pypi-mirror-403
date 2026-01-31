@@ -1,0 +1,186 @@
+"""
+Metadata:
+    Creation Date: 2024-09-27
+    Copyright: (C) 2024 by Germán Carrillo
+    Contact: german@opengisch
+
+License:
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the **GNU General Public License** as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from qgis.PyQt.QtCore import QObject, Qt, pyqtSignal
+
+from ..iliwrapper import ilideleter, ilimetaconfigexporter
+from ..iliwrapper.ili2dbconfig import (
+    DeleteConfiguration,
+    ExportMetaConfigConfiguration,
+    Ili2DbCommandConfiguration,
+)
+from ..iliwrapper.ili2dbutils import JavaNotFoundError
+from ..utils.qt_utils import OverrideCursor
+
+if TYPE_CHECKING:
+    # only needed for type checking to avoid circular imports
+    from ..iliwrapper.iliexecutable import IliExecutable
+
+
+class Ili2DbUtils(QObject):
+    """
+    Execute ili2db operations via Model Baker Library
+    """
+
+    stdout = pyqtSignal(str)
+    stderr = pyqtSignal(str)
+    process_started = pyqtSignal(str)
+    process_finished = pyqtSignal(int, int)
+    log_on_error = pyqtSignal(str)
+
+    def __init__(self):
+        QObject.__init__(self)
+
+        self._log = ""
+
+    def delete_baskets(
+        self, baskets: str, configuration: Ili2DbCommandConfiguration = None
+    ) -> tuple[bool, str]:
+        """
+
+        Args:
+            baskets: Semicolon-separated list of baskets to be deleted
+            configuration: Base Ili2DbCommandConfiguration object
+
+        Returns:
+            tuple[bool, str]: Tuple with boolean result and optional message"""
+        deleter = ilideleter.Deleter()
+        deleter.tool = configuration.tool
+        deleter.configuration = DeleteConfiguration(configuration)
+        deleter.configuration.baskets = baskets
+
+        with OverrideCursor(Qt.CursorShape.WaitCursor):
+            self._connect_ili_executable_signals(deleter)
+            self._log = ""
+
+            res = True
+            msg = self.tr("Basket(s) '{}' successfully deleted!").format(baskets)
+            try:
+                if deleter.run() != ilideleter.Deleter.SUCCESS:
+                    msg = self.tr(
+                        "An error occurred when deleting the basket(s) '{}' from the DB (check the QGIS log panel)."
+                    ).format(baskets)
+                    res = False
+                    self.log_on_error.emit(self._log)
+            except JavaNotFoundError as e:
+                msg = e.error_string
+                res = False
+
+            self._disconnect_ili_executable_signals(deleter)
+
+        return res, msg
+
+    def delete_dataset(
+        self, dataset: str, configuration: Ili2DbCommandConfiguration = None
+    ) -> tuple[bool, str]:
+        """
+
+        Args:
+            configuration: Base Ili2DbCommandConfiguration object
+            dataset: Dataset id to be deleted
+
+        Returns:
+            tuple[bool, str]: Tuple with boolean result and optional message"""
+        deleter = ilideleter.Deleter()
+        deleter.tool = configuration.tool
+        deleter.configuration = DeleteConfiguration(configuration)
+        deleter.configuration.dataset = dataset
+
+        with OverrideCursor(Qt.CursorShape.WaitCursor):
+            self._connect_ili_executable_signals(deleter)
+            self._log = ""
+
+            res = True
+            msg = self.tr("Dataset '{}' successfully deleted!").format(dataset)
+            try:
+                if deleter.run() != ilideleter.Deleter.SUCCESS:
+                    msg = self.tr(
+                        "An error occurred when deleting the dataset '{}' from the DB (check the QGIS log panel)."
+                    ).format(dataset)
+                    res = False
+                    self.log_on_error.emit(self._log)
+            except JavaNotFoundError as e:
+                msg = e.error_string
+                res = False
+
+            self._disconnect_ili_executable_signals(deleter)
+
+        return res, msg
+
+    def export_metaconfig(
+        self, ini_file: str, configuration: Ili2DbCommandConfiguration = None
+    ) -> tuple[bool, str]:
+        """
+
+        Args:
+            configuration: Base Ili2DbCommandConfiguration object
+            ini_file: Output file
+
+        Returns:
+            tuple[bool, str]: Tuple with boolean result and optional message"""
+        metaconfig_exporter = ilimetaconfigexporter.MetaConfigExporter()
+        metaconfig_exporter.tool = configuration.tool
+        metaconfig_exporter.configuration = ExportMetaConfigConfiguration(configuration)
+        metaconfig_exporter.configuration.metaconfigoutputfile = ini_file
+
+        with OverrideCursor(Qt.CursorShape.WaitCursor):
+            self._connect_ili_executable_signals(metaconfig_exporter)
+            self._log = ""
+
+            res = True
+            msg = self.tr("MetaConfig successfully exported to '{}'!").format(ini_file)
+            try:
+                if (
+                    metaconfig_exporter.run()
+                    != ilimetaconfigexporter.MetaConfigExporter.SUCCESS
+                ):
+                    msg = self.tr(
+                        "An error occurred when exporting the metaconfig from the DB to '{}' (check the QGIS log panel)."
+                    ).format(ini_file)
+                    res = False
+                    self.log_on_error.emit(self._log)
+            except JavaNotFoundError as e:
+                msg = e.error_string
+                res = False
+
+            self._disconnect_ili_executable_signals(metaconfig_exporter)
+
+        return res, msg
+
+    def _connect_ili_executable_signals(self, ili_executable: IliExecutable) -> None:
+        ili_executable.process_started.connect(self.process_started)
+        ili_executable.stderr.connect(self.stderr)
+        ili_executable.stdout.connect(self.stdout)
+        ili_executable.process_finished.connect(self.process_finished)
+
+        ili_executable.process_started.connect(self._log_on_process_started)
+        ili_executable.stderr.connect(self._log_on_stderr)
+
+    def _disconnect_ili_executable_signals(self, ili_executable: IliExecutable) -> None:
+        ili_executable.process_started.disconnect(self.process_started)
+        ili_executable.stderr.disconnect(self.stderr)
+        ili_executable.stdout.disconnect(self.stdout)
+        ili_executable.process_finished.disconnect(self.process_finished)
+
+        ili_executable.process_started.disconnect(self._log_on_process_started)
+        ili_executable.stderr.disconnect(self._log_on_stderr)
+
+    def _log_on_process_started(self, command: str) -> None:
+        self._log += command + "\n"
+
+    def _log_on_stderr(self, text: str) -> None:
+        self._log += text

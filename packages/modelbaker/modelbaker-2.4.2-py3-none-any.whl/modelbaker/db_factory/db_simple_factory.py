@@ -1,0 +1,98 @@
+"""
+Metadata:
+    Creation Date: 2019-04-08
+    Copyright: (C) 2019 by Yesid Polania
+    Contact: yesidpol.3@gmail.com
+
+License:
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the **GNU General Public License** as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Optional
+
+from ..iliwrapper.globals import DbIliMode
+from .db_factory import DbFactory
+
+available_database_factories = dict()
+try:
+    from .pg_factory import PgFactory
+
+    available_database_factories.update({DbIliMode.pg: PgFactory})
+except ModuleNotFoundError:
+    pass
+try:
+    from .gpkg_factory import GpkgFactory
+
+    available_database_factories.update({DbIliMode.gpkg: GpkgFactory})
+except ModuleNotFoundError:
+    pass
+try:
+    from .mssql_factory import MssqlFactory
+
+    available_database_factories.update({DbIliMode.mssql: MssqlFactory})
+except ModuleNotFoundError:
+    pass
+
+
+class DbSimpleFactory:
+    """Provides a single point (simple factory) to create a database factory (DbFactory)."""
+
+    def create_factory(self, ili_mode: DbIliMode) -> Optional[DbFactory]:
+        """Creates an instance of DbFactory based on ili_mode parameter.
+
+        Args:
+            ili_mode (DbIliMode): Value specifying which factory will be instantiated.
+
+        Returns:
+            DbFactory: A database factory"""
+        if not ili_mode:
+            return None
+
+        index = ili_mode & (~DbIliMode.ili)
+        result = None
+
+        if DbIliMode(index) in available_database_factories:
+            result = available_database_factories[
+                DbIliMode(index)
+            ]()  # instantiate factory
+        else:
+            logger = logging.getLogger(__name__)
+            logger.warning("Database factory not found for '{}'".format(index.name))
+
+        return result
+
+    def get_db_list(self, is_schema_import: bool = False) -> list[DbIliMode]:
+        """Gets a list containing the databases available in modelbaker.
+
+                This list can be used to show the available databases in GUI, for example, **QComboBox source**
+                in **Import Data Dialog**.
+
+        Args:
+            is_schema_import (bool): *True* to include interlis operation values, *False* otherwise.
+
+        Returns:
+            list: A list containing the databases available."""
+        ili = []
+        result = available_database_factories.keys()
+
+        if is_schema_import:
+            for item in result:
+                ili += [item | DbIliMode.ili]
+
+            result = ili + list(result)
+
+        return result
+
+    @property
+    def default_database(self) -> DbIliMode:
+        """Gets a default database for modelbaker.
+
+        Returns:
+            DbIliMode: Default database for modelbaker."""
+        return list(available_database_factories.keys())[0]
