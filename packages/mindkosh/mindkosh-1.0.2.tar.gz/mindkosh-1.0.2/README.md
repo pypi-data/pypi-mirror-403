@@ -1,0 +1,397 @@
+![mindkosh_logo_small](https://github.com/user-attachments/assets/2ee88693-028b-436c-9061-5ab318565c52)
+
+
+[Mindkosh](https://mindkosh.com/annotation-platform) is the platform for 
+labeling multi-sensor data, from Lidar point clouds to multiple camera images. Our powerful automatic annotation features and a particular focus on making Quality checking easier and faster, helps ML teams obtain high quality labeled datasets at scale.
+
+
+[Read documentation here](https://docs.mindkosh.com/getting-started/welcome)
+
+
+![github-sdk-page-image](https://github.com/user-attachments/assets/abbe6b88-3b86-4557-be87-8ed778ea093e)
+
+
+
+
+## Table of contents:
+- [Table of contents:](#table-of-contents)
+- [Setup](#setup)
+  - [Requirements](#requirements)
+  - [Installation](#installation)
+- [Getting started](#getting-started)
+- [Datasets](#datasets)
+  - [Create dataset](#create-dataset)
+  - [Get datasets](#get-datasets)
+  - [Get dataset files](#get-dataset-files)
+  - [Update tags](#update-tags)
+  - [Upload data](#upload-data)
+  - [Upload pointcloud data](#upload-pointcloud-data)
+  - [Upload imagefiles](#upload-imagefiles)
+  - [Delete files from dataset](#delete-files-from-dataset)
+  - [Delete dataset](#delete-dataset)
+- [Projects](#projects)
+  - [Create project](#create-project)
+  - [Get all projects](#get-all-projects)
+  - [Update project details](#update-project-details)
+  - [Delete project](#delete-project)
+- [Tasks](#tasks)
+  - [Create task](#create-task)
+  - [Get all tasks](#get-all-tasks)
+  - [Update task details](#update-task-details)
+  - [Download annotations](#download-annotations)
+  - [Upload annotations](#upload-annotations)
+  - [Delete task](#delete-task)
+- [Frames](#frames)
+  - [Get frames](#get-frames)
+  - [Download frame](#download-frame)
+  - [Show frame annotations](#show-frame-annotations)
+  - [Download frame annotations](#download-frame-annotations)
+  - [Visualize frame annotations](#visualize-frame-annotations)
+
+
+## Setup
+
+### Requirements
+
+* Python >= 3.7
+* Account on the Mindkosh platform (Create on now)
+* SDK Token (contact us to get one)
+
+
+### Installation
+
+* Install the package
+```sh
+pip install mindkosh
+```
+
+
+## Getting started
+
+```py
+from mindkosh import Client, PointCloudFile, ImageFile, Label
+client = Client(token)
+```
+
+To get started, create a Task/Project object using the token provided to you. You can also set the token
+in an environment variable(MK_TOKEN) instead of passing as a parameter to the object constructor.
+
+## Datasets
+
+### Create dataset
+```py
+client.create_dataset(
+    name: str, 
+    data_type: str
+) 
+```
+Parameters:
+* name - unique dataset name
+* data_type - image, pointcloud or video
+
+Example:
+```py
+dataset = client.create_dataset(
+    name = 'test-1',
+    data_type = 'pointcloud'
+)
+```
+
+### Get datasets
+```py
+datasets = client.get_datasets(
+    dataset_id = 1
+)
+```
+
+### Get dataset files
+```py
+files = client.get_dataset_files(
+    dataset_id = 1,
+    max_files = 100
+)
+```
+
+### Update tags
+```py
+updated_dataset_files = client.update_tags(
+    dataset_id = 1,
+    datasetfile_ids = [1,2,3,4,5,6,8],
+    add = ['tag1','tag2'],
+    remove = ['tag2'],
+    all = False
+)
+```
+
+### Upload data
+
+Uploads images from a list of directories or/and files.
+Useful when all the images same tags/extra.
+
+```py
+client.upload_data(
+    dataset_id = 1,
+    tags = ['tag4'],
+    resources = ['/home/user/Desktop/my-images/', '/home/user/Downloads/test1.jpg'],
+    recursive = False,
+    manifest_file = None,
+    save_files_dir = None,
+    **kwargs
+)
+```
+
+### Upload pointcloud data
+
+Uploads images from a list of directories or/and files.
+Useful when all the images same tags/extra.
+
+```py
+pcdfile1 = PointCloudFile(
+    filepath = '/file/path1/',
+    related_files = [
+        ImageFile(
+            filepath='/path/to/image1',
+            tags=[],
+            extra={
+                "intrinsic": [255.520403, 449.883682, 250.828738, 255.237477],
+
+                # Projection matrix from lidar to camera
+                "extrinsic": [
+                    [-0.735827, -0.65789, -0.0384775, 0],
+                    [0.6567956, -0.70452916, 0.00140833, 0],
+                    [-0.02255652, -0.0248216, 0.9993586, 0],
+                    [0, 0, 0, 1]
+                ],
+
+                # Camera projection model - PINHOLE OR FISHEYE
+                # For FISHEYE, mirrorParameter is also needed
+                "cameraModel": "PINHOLE",
+                "device_id": 1
+            }
+        )
+    ]
+)
+
+client.upload_pointcloud_data(
+    dataset_id = 1,
+    pcdfiles = [pcdfile1, pcdfile2]
+    **kwargs
+)
+```
+
+### Upload imagefiles
+
+Uploads images with tags/extra for each image
+
+```py
+client.upload_imagefiles(
+    dataset_id = 1,
+    imagefiles = [
+        ImageFile(
+            filepath='/path/to/image1',
+            tags=["city1"]
+        ),
+        ImageFile(
+            filepath='path/to/image2',
+            tags=["city2"]
+        )
+    ]
+)
+```
+
+### Delete files from dataset
+
+Delete select files or delete all the files from a dataset
+
+```py
+client.delete_files_from_dataset(
+    dataset_id = 1,
+    file_ids = [1,2,3,4],
+    delete_all = False
+)
+```
+
+### Delete dataset
+
+Delete a dataset along with its files
+
+```py
+client.delete_dataset(dataset_id=1)
+```
+
+## Projects
+
+### Create project
+```py
+project = client.project.create(name, description=None) 
+```
+To create a project, enter a name and an optional description.
+
+
+
+### Get all projects
+
+Get list of all project objects
+```py
+myprojects = client.project.get()
+```
+
+
+### Update project details
+
+```py
+project.update_name("new name")
+project.update_description("New description")
+```
+
+### Delete project
+```py
+project.delete()
+```
+
+## Tasks
+
+### Create task
+Create a new task :
+```py
+labels = [
+    Label(
+      name='car',
+      color='#fffccc',
+      sequence=1
+    ),
+    Label(
+      name='bus',
+      color='#fcf0fc',
+      sequence=2,
+      attributes =[]
+    )
+]
+```
+Note : Each label should have a unique name.
+
+```py
+task = client.task.create( 
+    name='task1',
+    labels=labels,
+    dataset_id=1,
+    tags=['tag1'],
+    project_id=None,
+    job_modes=['validation','qc']
+    batches=3
+)
+```
+To create a task and upload images/video, user must provide either `resources`/`manifest`.
+
+Parameters:
+* name - A valid task name.
+* batches - Number of images in each job. Only valid for resource_type="imageset".
+* project_id - Optional - ID of the project this task should belong to.
+
+
+### Get all tasks
+
+Get list of all the tasks
+```py
+mytasks = client.task.get()
+```
+
+
+### Update task details
+
+```py
+task.update_name("New name")
+task.update_project_id(new_valid_project_id)  
+```
+
+### Download annotations
+
+Get releases
+```py
+releases = task.get_releases()
+```
+
+Create a release
+
+```py
+releases = task.create_release(
+    format="coco", 
+    batches=[1,2], 
+    description=None, 
+    webhook_url=None
+)
+```
+
+format can be any of the following:
+
+* Available formats and their parameter names:
+* COCO - "coco"
+* Datumaro - "datumaro"
+* Pascal VOC - "voc"
+* Segmentation mask - "segmentation_mask"
+* YOLO - "yolo"
+
+Download a release
+```py
+task.download_release(
+    release_id=1,
+    local_path='/local/dir/'
+)
+```
+
+Delete a release
+```py
+task.delete_release(release_id=1)
+```
+
+### Upload annotations
+
+```py
+task.upload_annotations(
+    annotation_format='coco',
+    local_path='annotation_file.zip'
+) 
+```
+
+
+### Delete task
+Delete a task - 
+```py
+task.delete()
+```
+
+## Frames
+
+### Get frames
+```py
+frames = t1.frames()
+frame = frames[frame_id]
+```
+
+### Download frame
+```py
+frame.download(location)
+```
+
+### Show frame annotations
+```py
+frame.annotations
+```
+
+### Download frame annotations
+```py
+frame.download_annotations(location,format=None)
+```
+Parameters :
+
+* location - local dir location where you want to save annotations
+* format - None if you want to download row annotations. Any of ("coco", "datumaro", "voc", "yolo") if you want to download datasets in specific format.
+
+### Visualize frame annotations
+```py
+frame.visualize(show_annotations=True,fill_color=0.30)
+```
+Parameters :
+
+* show_annotations - False to see raw image, True to see image with annotations.
+* fill_color - 0 <= Color transparency <= 1
