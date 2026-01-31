@@ -1,0 +1,143 @@
+# MCP Time Server
+
+一个简单易用的 MCP (Model Context Protocol) 服务器，提供时间查询功能。
+
+## 功能特性
+
+- 🕐 获取当前本地时间
+- 🌍 支持任意时区的时间查询
+- 🚀 简洁的 API 设计
+- 📦 易于安装和使用
+
+## 安装
+
+```bash
+pip install mcp-time-server
+```
+
+## 使用方法
+
+### 作为 MCP Server 运行
+
+```bash
+mcp-time-server
+```
+
+服务器将在 `http://127.0.0.1:8000/sse` 启动。
+
+### 在代码中使用
+
+```python
+from mcp_time_server import mcp
+
+# 启动服务器
+mcp.run(transport="sse")
+```
+
+## 工具说明
+
+### get_current_time
+
+获取当前时间，支持可选的时区参数。
+
+**参数:**
+- `timezone` (可选): 时区名称，如 "Asia/Shanghai", "UTC", "America/New_York"
+
+**返回:**
+- 格式化的时间字符串
+
+**示例:**
+
+```python
+# 获取本地时间
+get_current_time()
+# 返回: "2026-01-29 14:30:45"
+
+# 获取 UTC 时间
+get_current_time("UTC")
+# 返回: "2026-01-29 06:30:45 UTC"
+
+# 获取上海时间
+get_current_time("Asia/Shanghai")
+# 返回: "2026-01-29 14:30:45 CST"
+```
+
+## 支持的时区
+
+常用时区列表：
+
+- `UTC` - 世界标准时间
+- `Asia/Shanghai` - 上海时间
+- `Asia/Tokyo` - 东京时间
+- `America/New_York` - 纽约时间
+- `Europe/London` - 伦敦时间
+- `Europe/Paris` - 巴黎时间
+- `Australia/Sydney` - 悉尼时间
+
+更多时区请参考 [IANA 时区数据库](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)。
+
+## 在 Cherry Studio 中使用
+
+1. 启动服务器:
+   ```bash
+   mcp-time-server
+   ```
+
+2. 在 Cherry Studio 中配置:
+   - 名称: `time-server`
+   - 类型: `SSE`
+   - URL: `http://127.0.0.1:8000/sse`
+
+3. 在对话中询问时间:
+   - "现在几点了？"
+   - "UTC 时间是多少？"
+   - "纽约现在几点？"
+
+## 开发
+
+### 安装开发依赖
+
+```bash
+pip install -e ".[dev]"
+```
+
+### 运行测试
+
+```bash
+pytest
+```
+
+### 代码格式化
+
+```bash
+black mcp_time_server/
+```
+
+### 类型检查
+
+```bash
+mypy mcp_time_server/
+```
+
+## 依赖
+
+- `mcp>=1.0.0` - Model Context Protocol SDK
+- `pytz>=2024.0` - 时区支持
+
+## 许可证
+
+MIT License
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+## 作者
+
+Your Name - [your.email@example.com](mailto:your.email@example.com)
+
+## 链接
+
+- [PyPI](https://pypi.org/project/mcp-time-server/)
+- [GitHub](https://github.com/yourusername/mcp-time-server)
+- [MCP 文档](https://modelcontextprotocol.io/)
