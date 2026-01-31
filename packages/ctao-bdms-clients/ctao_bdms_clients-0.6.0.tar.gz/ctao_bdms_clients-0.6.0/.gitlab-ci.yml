@@ -1,0 +1,99 @@
+include:
+  - project: cta-computing/common/aiv-toolkit
+    ref: e78b620a2db2be7f6177c6ee3b2a8bf35c781093
+    file: ci-functions.yml
+  - aiv-config.yml
+
+
+variables:
+  CHART_LOCATION: chart
+  CHART_NAME: bdms
+  DOCKER_IMAGE_CONTEXT: '${CI_PROJECT_DIR}'
+
+stages:
+  - prepare
+  - lint
+  - build
+  - sign
+  - tests
+  - sonarqube
+  - publish
+  - report
+  - changelog
+
+k8s-integration-tests:
+  variables:
+    KUBERNETES_CPU_REQUEST: "5"
+    KUBERNETES_CPU_LIMIT: "5"
+    KUBERNETES_MEMORY_REQUEST: "24Gi"
+    KUBERNETES_MEMORY_LIMIT: "63Gi"
+  # override from toolkit to add .env file with CI secrets
+  script:
+    - echo -e
+      "MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY\nMINIO_SECRET_KEY=$MINIO_SECRET_KEY\n"
+      > .env
+    - ${MAKE} test-chart 2>&1 | tee test-output.log
+
+k8s-upgrade-integration-tests:
+  variables:
+    KUBERNETES_CPU_REQUEST: "5"
+    KUBERNETES_CPU_LIMIT: "5"
+    KUBERNETES_MEMORY_REQUEST: "32Gi"
+    KUBERNETES_MEMORY_LIMIT: "63Gi"
+    UPGRADE_BASE_REF: v0.5.0
+    CHERRY_PICK_COMMITS: ""
+    TEST_ROLLBACK: false
+    GIT_DEPTH: 0
+  # override from toolkit to add .env file with CI secrets
+  before_script:
+    - apk add --no-cache make wget py3-pip py3-ruamel.yaml
+    - !reference [.set_ulimits_for_kind, script]
+    - pip install --no-cache-dir --upgrade --break-system-packages $(realpath
+      $AIV_TOOLKIT_DIR)
+    - echo -e
+      "MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY\nMINIO_SECRET_KEY=$MINIO_SECRET_KEY\n"
+      > .env
+
+
+# prod tests are run separately to allow deployment without mounting the repo, and with ingestion daemon enabled
+k8s-prod-integration-tests:
+  extends: k8s-integration-tests
+  variables:
+    KUBERNETES_CPU_REQUEST: "5"
+    KUBERNETES_CPU_LIMIT: "5"
+    KUBERNETES_MEMORY_REQUEST: "24Gi"
+    KUBERNETES_MEMORY_LIMIT: "63Gi"
+    AIV_DEPLOY_HELM_UPGRADE_CHART_EXTRA_VALUES: --set prod_tests.enabled=true
+      --set dev.mount_repo=false --set dev.run_tests=false --set
+      acada_ingest.daemon.replicas=1
+
+  # override from toolkit to add .env file with CI secrets
+  script:
+    - echo -e
+      "MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY\nMINIO_SECRET_KEY=$MINIO_SECRET_KEY\n"
+      > .env
+    - ${MAKE} test-chart 2>&1 | tee test-output.log
+
+sonarqube:
+  variables:
+    # TODO: remove when toolkit is updated to no longer set this variable
+    # should just be taken from sonar-project.properties
+    SONAR_HOST_URL: "https://sonar-ctao.zeuthen.desy.de"
+
+  # two tokens only needed while sonar pr is not merged, can also be removed after
+  script:
+    - sonar-scanner --debug -Dsonar.token="$SONAR_TOKEN_CTAO"
+
+build:
+  variables:
+    CI_HARBOR_REGISTRY_IMAGE: '${HARBOR_HOST}/dpps/bdms-client:${DOCKER_TAG}'
+    AIV_DOCKER_IMAGE_CONTEXT: $CI_PROJECT_DIR
+    AIV_DOCKER_FILE: $CI_PROJECT_DIR/Dockerfile
+
+hadolint:
+  rules:
+    - when: never
+
+sign:
+  rules:
+    - when: never

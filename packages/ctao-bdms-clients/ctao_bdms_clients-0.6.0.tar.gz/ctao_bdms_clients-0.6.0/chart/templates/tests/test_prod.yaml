@@ -1,0 +1,140 @@
+{{ if .Values.prod_tests.enabled }}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "bdms-pytest"
+  annotations:
+    "helm.sh/hook": test
+spec:
+  volumes:
+  - name: rucio-config
+    configMap:
+      name: {{ template "bdms.rucioConfigMapName" . }}
+  {{- if .Values.prod_tests.volumes }}
+  {{- toYaml .Values.prod_tests.volumes | nindent 2 }}
+  {{- end }}
+  {{ if .Values.iam.enabled }}
+  - name: trust-anchors
+    persistentVolumeClaim:
+      claimName: {{ include "bdms.fullname" . }}-dpps-iam-grid-ca-bundle-pvc
+  - name: ca-bundle
+    persistentVolumeClaim:
+      claimName: {{ include "bdms.fullname" . }}-dpps-iam-ca-bundle-pvc
+  - name: vomses
+    configMap:
+      name: {{ include "bdms.fullname" . }}-dpps-iam-vomses
+  - configMap:
+      defaultMode: 420
+      name: {{ include "bdms.fullname" . }}-dpps-iam-voms-lsc
+    name: vomsdir
+  {{ end }}
+
+  containers:
+  - name: bdms-pytest
+    image: harbor.cta-observatory.org/dpps/bdms-client:{{ .Values.dev.client_image_tag | default .Chart.AppVersion }}
+    workingDir: /home/user/bdms
+    securityContext:
+      runAsUser: 0
+    command:
+    - /bin/sh
+    - -c
+    - |
+      set -ex
+
+      export PYTHONUNBUFFERED=1
+      export PATH=$PWD/.toolkit/bin:$PATH
+
+      export HELM_RELEASE_NAME={{ .Release.Name }}
+
+      voms-proxy-init2 -valid 9999:00 -cert /opt/rucio/etc/usercert.pem -key /opt/rucio/etc/userkey.pem
+
+      {{ if .Values.iam.enabled }}
+      # normal k8s dns does not allow to set a name like voms.test.example
+      # voms svc uses port 8443, so it does not pass through the ingress controller like other services
+
+      function add_hosts_alias {
+         original_host="${1:?}"
+         host_alias="${2:?}"
+
+         while [[ -z $(dig ${original_host} +short) ]]; do
+            echo "Waiting for ${original_host} to resolve..."
+            sleep 1
+         done
+         host_ip=$(dig ${original_host} +short | head -n 1)
+
+         echo "${host_ip} ${host_alias}" >> /etc/hosts
+      }
+
+      add_hosts_alias "{{ include "bdms.fullname" . }}-dpps-iam-nginx-voms.default.svc.cluster.local" voms.test.example
+      add_hosts_alias ingress-nginx-controller.ingress-nginx.svc.cluster.local iam.test.example
+
+      voms-proxy-init2 -valid 9999:00 -cert /opt/rucio/etc/usercert.pem -key /opt/rucio/etc/userkey.pem -voms {{ .Values.iam.vomsAA.config.voName }} -dont-verify-ac || echo "unable to get VOMS proxy, continuing without it"
+      {{ end }}
+
+      # test access to the storage
+      # xrdfs root://rucio-storage-1 spaceinfo /rucio
+
+      {{ .Files.Get "scripts/bootstrap_rucio/wait_for_rucio.sh" | indent 10 }}
+
+      # prod tests are run in the same job, but they do not provide any additional coverage
+      # they should be strictly controlled by helm values to avoid mixing dev and prod settings in prod
+      # prod tests run without mounting the repo, they use the installed version of bdms
+      # prod test container does not have pytest, and we need only the minimal version of it
+      python3 -m ensurepip
+      python3 -m pip install pytest boto3 python-dotenv
+      python3 -m bdms.tests -m prod \
+        -svv \
+        -o cache_dir=$PWD/.pytest-cache \
+        --color=yes \
+        --log-cli-level=INFO \
+        --prod-config '{{ .Values.prod_tests.config | toJson }}'
+
+      {{ if .Values.prod_tests.sleep }}
+      sleep infinity
+      {{ end }}
+
+
+    volumeMounts:
+    - name: rucio-config
+      mountPath: /opt/rucio/etc/rucio.cfg
+      subPath: rucio.cfg
+
+
+    {{ if .Values.iam.enabled }}
+    - name: vomses
+      mountPath: /etc/vomses
+      subPath: vomses
+    - mountPath: /etc/grid-security/vomsdir/{{ .Values.iam.vomsAA.config.voName }}/{{ .Values.iam.vomsAA.config.host }}.lsc
+      name: vomsdir
+      subPath: {{ .Values.iam.vomsAA.config.voName }}
+    - name: trust-anchors
+      mountPath: /etc/grid-security/certificates
+      readOnly: true
+    - name: ca-bundle
+      mountPath: /etc/pki
+      readOnly: true
+    {{ else }}
+    - name: cafile
+      subPath: ca.pem
+      mountPath: /etc/grid-security/certificates/74df993b.0
+    {{ end }}
+
+    - name: scripts
+      mountPath: /scripts
+
+    {{- if .Values.prod_tests.volumeMounts }}
+    {{- toYaml .Values.prod_tests.volumeMounts | nindent 4 }}
+    {{- end }}
+
+    envFrom:
+        - configMapRef:
+            name: {{ template "bdms.fullname" . }}-celery-config
+
+    env:
+    - name: RUCIO_CLIENT_MODE
+      value: user
+
+
+  restartPolicy: Never
+{{ end }}

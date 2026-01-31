@@ -1,0 +1,949 @@
+# TODO: set password from secret
+# TODO: generate random, avoid repeating
+# Some values (like database connection strings and image tags) are repeated in the chart.
+# It is a known difficulty with Helm charts (e.g. https://github.com/helm/helm/issues/2492)
+# The repetition can be avoided with yaml anchors but it is problematic (https://helm.sh/docs/chart_template_guide/yaml_techniques/#yaml-anchors)
+# Alternatively, we can modify the chart to use the values from the secret or common values
+# In production this is templated with GitOps and repetitive values are rather avoided
+
+# -- This is a destructive operation, it will delete all data in the database
+safe_to_bootstrap_rucio: false
+# -- This is will delete all data in the database only on the first install
+safe_to_bootstrap_rucio_on_install: true
+
+# -- This will configure the rucio server with the storages
+configure_rucio: true
+
+rucio_client_config:
+    # -- The name of the ConfigMap that contains the Rucio configuration.  If empty, default name will be used
+    configMapName:
+    # -- If true, creates a ConfigMap with the Rucio configuration
+    createConfigMap: true
+
+# TODO: make more clear mechanism to handle different upgrade scenarios
+# If there is a conflict between existing configuration, the configuration will fail. In this case, likely the
+# configuration should be deleted and re-created.
+
+_protocols_common: &protocols_common
+  domains:
+    lan:
+      read: 1
+      write: 1
+      delete: 1
+    wan:
+      read: 1
+      write: 1
+      delete: 1
+      third_party_copy_read: 1
+      third_party_copy_write: 1
+  extended_attributes: None
+  impl: rucio.rse.protocols.gfal.Default
+  port: 1094
+  prefix: //rucio
+
+configure:
+  as_hook: false
+
+  #: Whether to apply database migrations
+  run_database_migrations: true
+
+  identities:
+  - type: "X509"
+    id: "CN=DPPS User"
+    email: "dpps-test@cta-observatory.org"
+    account: "root"
+
+  rses:
+    STORAGE-1:
+      rse_type: "DISK"
+      # attributes can be custom or reserved (from rucio RseAttr)
+      attributes:
+        # this RSE attribute is currently required for the rucio-dirac integration, see https://github.com/rucio/rucio/issues/6852
+        ANY: True
+        ONSITE: True
+        fts: https://bdms-fts:8446
+      limits_by_account:
+        root: "infinity"
+      protocols:
+      - hostname: rucio-storage-1
+        scheme: davs
+        <<: *protocols_common
+
+    STORAGE-2:
+      recreate_if_exists: true
+      attributes:
+        ANY: True
+        OFFSITE: True
+        fts: https://bdms-fts:8446
+      limits_by_account:
+        root: -1
+      protocols:
+      - hostname: rucio-storage-2
+        scheme: davs
+        <<: *protocols_common
+
+    STORAGE-3:
+      recreate_if_exists: true
+      attributes:
+        ANY: True
+        OFFSITE: True
+        fts: https://bdms-fts:8446
+      limits_by_account:
+        root: -1
+      protocols:
+      - hostname: rucio-storage-3
+        scheme: davs
+        <<: *protocols_common
+
+  # -- A list of RSE distance specifications, each a list of 3 values: source RSE, destination RSE and distance (integer)
+  rse_distances:
+  - ["STORAGE-1", "STORAGE-2", 1]
+  - ["STORAGE-2", "STORAGE-1", 1]
+  - ["STORAGE-1", "STORAGE-3", 1]
+  - ["STORAGE-3", "STORAGE-1", 1]
+  - ["STORAGE-2", "STORAGE-3", 1]
+  - ["STORAGE-3", "STORAGE-2", 1]
+
+  # -- This script is executed after the Rucio server is deployed and configured. It can be used to perform additional configuration or setup tasks if they currently cannot be done with the chart values.
+  extra_script: |
+    # add a scope
+    rucio scope add --account root root || echo "Scope 'root' already exists"
+    rucio did add --type container /ctao.dpps.test || echo "Container /ctao.dpps.test already exists"
+
+# note that the SE configuration above is not aware of if the storage is a test or not
+# this is why there is certain duplication, but it's intentional
+
+# --- A list of test storages, deployed in the test setup
+test_storages:
+  # -- If true, deploys test storages for testing purposes. This is set to 'False' if an external storage is used as in the production setup
+  enabled: true
+  xrootd:
+    image:
+      # -- The container image repository for the XRootD storage deployment
+      repository: harbor.cta-observatory.org/proxy_cache/rucio/test-xrootd
+      # -- Defines the specific version of the XRootD image to use
+      tag: 38.2.0
+    instances:
+    # "rucio-storage-1" is also mounted to the test pod as /storage-1
+    - "rucio-storage-1"
+    - "rucio-storage-2"
+    - "rucio-storage-3"
+    # -- The storage class name for the PVC used by rucio-storage-1
+    rucio_storage_1_storage_class: standard
+
+
+rucio_iam_sync_user:
+  enabled: true
+  secret:
+    # -- name of the secret containing the sync config file in key sync-iam-rucio.cfg
+    name: sync-rucio-iam-config
+    # -- Create secret from values, for testing. Set to false for production and create secret
+    create: true
+    client_id:
+    client_secret:
+  # -- The IAM server URL for Rucio IAM synchronization, can be templated
+  iam_server: http://{{ include "dpps-iam.fullname" . }}-dpps-iam-login-service:8080
+  image:
+    repository: harbor.cta-observatory.org/dpps/bdms-client
+    tag:
+
+
+# -- Databases Credentials used by Rucio to access the database. If postgresql subchart is deployed, these credentials should match those in postgresql.global.postgresql.auth. If postgresql subchart is not deployed, an external database must be provided
+database:
+  # -- The Rucio database connection URI
+  default: "postgresql+psycopg://rucio:XcL0xT9FgFgJEc4i3OcQf2DMVKpjIWDGezqcIPmXlM@bdms-db:5432/rucio"
+
+bootstrap:
+  image:
+    # -- The container image for bootstrapping Rucio (initialization, configuration) with the CTAO Rucio policy package installed
+    repository: harbor.cta-observatory.org/dpps/bdms-rucio-server
+    # -- The specific image tag to use for the bootstrap container
+    tag: 39.0.0-v0.5.0
+  pg_image:
+    # -- Postgres client image used to wait for db readines during bootstrap
+    repository: harbor.cta-observatory.org/proxy_cache/postgres
+    # -- Postgres client image tag used to wait for db readines during bootstrap
+    tag: 16.3-bookworm
+
+rucio-server:
+  enabled: true
+  image:
+    # -- The container image repository for Rucio server with the CTAO Rucio policy package installed
+    repository: harbor.cta-observatory.org/dpps/bdms-rucio-server
+    # -- The specific image tag to deploy
+    tag: 39.0.0-v0.5.0
+    # -- It defines when kubernetes should pull the container image, the options available are: Always, IfNotPresent, and Never
+    pullPolicy: IfNotPresent
+
+  errorLog:
+    image: harbor.cta-observatory.org/proxy_cache/busybox
+
+  # TODO: replace with internal svc
+  # -- The hostname of the Rucio authentication server.
+  authRucioHost: rucio-server.local
+  # -- Number of replicas of the Rucio server to deploy. We can increase it to meet higher availability goals
+  replicaCount: 1
+
+  config:
+    database:
+      # -- The database connection URI for Rucio
+      default: "postgresql+psycopg://rucio:XcL0xT9FgFgJEc4i3OcQf2DMVKpjIWDGezqcIPmXlM@bdms-db:5432/rucio"
+    policy:
+      # -- Defines the policy permission model for Rucio for determining how authorization and access controls are applied, its value should be taken from the installed Rucio policy package
+      package: "bdms_rucio_policy"
+      permission: "ctao"
+      schema: "ctao_bdms"
+      lfn2pfn_algorithm_default: "ctao_bdms"
+    common:
+      extract_scope: ctao_bdms
+
+  ingress:
+    enabled: false
+
+  service:
+    # -- Specifies the kubernetes service type for making the Rucio server accessible within or outside the kubernetes cluster, available options include clusterIP (internal access only, default), NodePort (exposes the service on port across all cluster nodes), and LoadBalancer (Uses an external load balancer)
+    type: ClusterIP
+    # -- The port exposed by the kubernetes service, making the Rucio server accessible within the cluster
+    port: 443
+    # -- The port inside the Rucio server container that listens for incoming traffic
+    targetPort: 443
+    # -- The network protocol used for HTTPS based communication
+    protocol: TCP
+    # -- The name of the service port
+    name: https
+  # -- Enables the Rucio server to use SSL/TLS for secure communication, requiring valid certificates to be configured
+  useSSL: true
+
+  httpd_config:
+    # -- Enables Rucio server to support and interact with grid middleware (storages) for X509 authentication with proxies
+    grid_site_enabled: "True"
+    # -- Allows for custom LFNs with slashes in request URLs so that Rucio server (Apache) can decode and handle such requests properly
+    encoded_slashes: "True"
+    # -- Needed for urls with /, e.g. did rest api
+    encoded_slashes_no_decode: "True"
+
+rucio-daemons:
+  enabled: true
+  useDeprecatedImplicitSecrets: false
+  secretMounts:
+    # rucio charts prepend the release name to the secret name
+    - secretName: server-cafile
+      mountPath: /opt/certs/ca.pem
+      subPath: ca.pem
+    - secretName: rucio-x509up
+      subPath: x509up
+      mountPath: /opt/proxy/x509up
+
+  image:
+    # -- Specifies the container image repository for Rucio daemons
+    repository: harbor.cta-observatory.org/dpps/bdms-rucio-daemons
+    # -- Specific image tag to use for deployment
+    tag: 39.0.0-v0.5.0
+    # -- It defines when kubernetes should pull the container image, the options available are: Always, IfNotPresent, and Never
+    pullPolicy: IfNotPresent
+  # -- Number of container instances to deploy for each Rucio daemon, this daemon submits new transfer requests to the FTS
+  conveyorTransferSubmitterCount: 1
+  # -- Polls FTS to check the status of ongoing transfers
+  conveyorPollerCount: 1
+  # -- Marks completed transfers and updates metadata
+  conveyorFinisherCount: 1
+  # -- Listens to messages from ActiveMQ, which FTS uses to publish transfer status updates. This ensures Rucio is notified of completed or failed transfers in real time
+  conveyorReceiverCount: 1
+  # conveyorStagerCount: 1
+  # conveyorThrottlerCount: 1
+  # conveyerPreparerCount: 1
+  # -- Evaluates Rucio replication rules and triggers transfers
+  judgeEvaluatorCount: 1
+  #judgeRepairerCount: 1 (In production, we absolutely need repairer, since it guarantees that the rule is unstuck. But in test, we have to run it only manually.)
+
+  ftsRenewal:
+    image:
+      repository: harbor.cta-observatory.org/proxy_cache/rucio/fts-cron
+      tag: "38.2.0"
+    enabled: true
+    schedule: "0 */6 * * *"
+    servers: "https://bdms-fts:8446"
+    script: 'default'
+    additionalEnvs:
+      - name: USERCERT_NAME
+        value: "usercert.pem"
+      - name: USERKEY_NAME
+        value: "userkey.pem"
+    secretMounts:
+      # rucio charts prepend the release name to the secret name
+      - volumeName: ca-cert
+        secretName: server-cafile
+        mountPath: /etc/grid-security/certificates/74df993b.0
+        subPath: ca.pem
+      - volumeName: ca-crl
+        secretName: server-cafile
+        mountPath: /etc/grid-security/certificates/74df993b.r0
+        subPath: dpps_test_ca.crl.r0
+      - volumeName: dppsuser-cert
+        secretName: dppsuser-certkey
+        mountPath: /opt/rucio/certs/usercert.pem
+        subPath: dppsuser.pem
+      - volumeName: dppsuser-key
+        secretName: dppsuser-certkey
+        mountPath: /opt/rucio/keys/userkey.pem
+        subPath: dppsuser.key.pem
+    extraSecretMounts: []
+
+
+  conveyorTransferSubmitter:
+    # -- Specifies which Rucio activities to be handled. Some of the activities for data movements are 'User Subscriptions' and 'Production Transfers'
+    activities: "'User Subscriptions'"
+    # -- Defines the interval (in seconds) the daemon waits before checking for new transfers
+    sleepTime: 5
+    # -- Sets the timeout if required for archiving completed transfers
+    archiveTimeout: ""
+    resources:
+      limits:
+        # specifies the maximum resources the container can use
+        memory: "4Gi"
+        cpu: "3000m"
+      requests:
+        # specifies the requests as the minimum guaranteed resources
+        memory: "200Mi"
+        cpu: "100m"
+
+  conveyorPoller:
+    # -- Specifies which Rucio activities to be handled. Some of the activities for data movements are 'User Subscriptions' and 'Production Transfers'
+    activities: "'User Subscriptions'"
+    # -- Defines how often (in seconds) the daemon polls for transfer status updates
+    sleepTime: 60
+    # -- Filters transfers that are older than the specified time (in seconds) before polling
+    olderThan: 600
+    resources:
+      limits:
+        memory: "4Gi"
+        cpu: "3000m"
+      requests:
+        memory: "200Mi"
+        cpu: "100m"
+
+  conveyorFinisher:
+    # -- Specifies which Rucio activities to be handled. Some of the activities for data movements are 'User Subscriptions' and 'Production Transfers'
+    activities: "'User Subscriptions'"
+    # -- Defines how often (in seconds) the daemon processes finished transfers
+    sleepTime: 5
+    resources:
+      limits:
+        memory: "4Gi"
+        cpu: "3000m"
+      requests:
+        memory: "200Mi"
+        cpu: "100m"
+
+
+  judgeEvaluator:
+
+    resources:
+      limits:
+        memory: "4Gi"
+        cpu: "3000m"
+      requests:
+        memory: "1Gi"
+        cpu: "100m"
+
+
+  # this goes into the rucio.cfg
+  config:
+    database:
+      # -- Specifies the connection URI for the Rucio database, these settings will be written to 'rucio.cfg'
+      default: "postgresql+psycopg://rucio:XcL0xT9FgFgJEc4i3OcQf2DMVKpjIWDGezqcIPmXlM@bdms-db:5432/rucio"
+
+    # current rucio uses policy/permission as vo name in
+    # conveyor-receiver, see https://github.com/rucio/rucio/issues/7207
+    policy:
+      # -- Defines the policy permission model for Rucio for determining how authorization and access controls are applied, its value should be taken from the installed Rucio policy package
+      package: "bdms_rucio_policy"
+      permission: "ctao"
+      schema: "ctao_bdms"
+      lfn2pfn_algorithm_default: "ctao_bdms"
+
+    common:
+      extract_scope: "ctao_bdms"
+
+    conveyor:
+      scheme: "davs,root,srm,gsiftp,http,https"
+
+    messaging-fts3:
+      # -- Specifies the message broker used for FTS messaging
+      brokers: "fts-activemq"
+      # -- Defines the port used for the broker
+      port: 61613
+      # -- Specifies the non-SSL port
+      nonssl_port: 61613
+      # -- Determines whether to use SSL for message broker connections. If true, valid certificates are required for securing the connection
+      use_ssl: False
+      # -- Specifies the message broker queue path where FTS sends transfer status updates. This is the place where Rucio listens for completed transfer notifications
+      destination: /topic/transfer.fts_monitoring_complete
+      voname: ctao
+      # -- Specifies the authentication credential (username) for connecting to the message broker
+      username: fts
+      # -- Specifies the authentication credential (password) for connecting to the message broker
+      password: topsecret
+
+
+
+postgresql:
+  # --  Configuration of built-in postgresql database. If 'enabled: true', a postgresql instance will be deployed, otherwise, an external database must be provided in database.default value
+  enabled: true
+  image:
+    registry: harbor.cta-observatory.org/proxy_cache
+    repository: bitnamilegacy/postgresql
+  global:
+    postgresql:
+      auth:
+        # -- The database username for authentication
+        username: rucio
+        # -- The password for the database user
+        password: "XcL0xT9FgFgJEc4i3OcQf2DMVKpjIWDGezqcIPmXlM"
+        # -- The name of the database to be created and used by Rucio
+        database: rucio
+
+
+# TODO: change to rucio config
+rucio:
+  # -- Specifies the username for Rucio operations as part of Rucio configuration
+  username: dpps
+  # TODO: generate random
+  password: secret
+  # -- The version of Rucio being deployed
+  version: 38.2.0
+# -- Specifies the Namespace suffix used for managing deployments in kubernetes
+suffix_namespace: "default"
+
+# FTS test setup
+fts:
+  # -- Specifies the configuration for FTS test step (FTS server, FTS database, and ActiveMQ broker containers). Enables or disables the deployment of a FTS instance for testing. This is set to 'False' if an external FTS is used
+  enabled: True
+
+  # TODO: generate random when needed
+  # -- Defines the root password for the FTS database
+  ftsdb_root_password: iB7dMiIybdoaozWZMkvRo0eg9HbQzG9+5up50zUDjE4
+  # -- Defines the password for the FTS database user
+  ftsdb_password: SDP2RQkbJE2f+ohUb2nUu6Ae10BpQH0VD70CsIQcDtM
+
+  messaging:
+    broker: "localhost:61613"
+    use_broker_credentials: "true"
+    username: "fts"
+    password: "topsecret"
+
+  # # TODO: this is temporary, to investigate why the fts is spending so much time/cpu doing nothing, only in CI
+  # securityContext:
+  #   capabilities:
+  #     add:
+  #     - SYS_PTRACE
+
+
+dev:
+  # -- sleep after test to allow interactive development
+  sleep: false
+  # -- run tests during helm test (otherwise, the tests can be run manually after exec into the pod)
+  run_tests: true
+  # -- mount the repository into the container, useful for development and debugging
+  mount_repo: true
+  client_image_tag:
+  # -- number of jobs to use for pytest
+  n_test_jobs: 1
+
+
+prod_tests:
+  # -- Enable or disable production tests during helm test
+  enabled: false
+  # -- Configuration for production tests
+  config:
+    interval_between_new_files_seconds: 2
+    number_of_files: 10
+    file_size_mb: 1
+    vo_name: ctao.dpps.test
+    # -- local disk path in the container where test dummy files are created for ingestion
+    # -- must include the voi and scope directory below the RSE prefix
+    data_prefix: /storage-1/ctao.dpps.test/tests/
+    wait_after_end_of_file_creation_seconds: 30
+    wait_after_end_of_file_creation_interval_seconds: 1
+
+  #:   extra volumes, e.g. to mount the acada directory into the prod_tests pod
+  volumes:
+    - name: storage-1-data
+      persistentVolumeClaim:
+        claimName: storage-1-pvc
+    - name: cafile
+      secret:
+        defaultMode: 420
+        secretName: bdms-server-cafile
+    - name: dppsuser-certkey
+      secret:
+        defaultMode: 420
+        secretName: bdms-dppsuser-certkey
+    - name: scripts
+      configMap:
+        name: bdms-scripts
+    - name: dppsuser-certkey-600
+      secret:
+        defaultMode: 0600
+        secretName: bdms-dppsuser-certkey
+    - name: dppsuser-certkey-400
+      secret:
+        defaultMode: 0400
+        secretName: bdms-dppsuser-certkey
+    - name: dppsuser-non-dpps-certkey
+      secret:
+        defaultMode: 420
+        secretName: bdms-dppsuser-non-dpps-certkey
+    - name: dppsuser-non-dpps-certkey-600
+      secret:
+        defaultMode: 0600
+        secretName: bdms-dppsuser-non-dpps-certkey
+    - name: dppsuser-non-dpps-certkey-400
+      secret:
+        defaultMode: 0400
+        secretName: bdms-dppsuser-non-dpps-certkey
+    - name: dppsuser-unprivileged-certkey-600
+      secret:
+        defaultMode: 0600
+        secretName: bdms-dppsuser-unprivileged-certkey
+    - name: dppsuser-unprivileged-certkey-400
+      secret:
+        defaultMode: 0400
+        secretName: bdms-dppsuser-unprivileged-certkey
+    - name: dppsuser-non-ctao-certkey-600
+      secret:
+        defaultMode: 0600
+        secretName: bdms-dppsuser-non-ctao-certkey
+    - name: dppsuser-non-ctao-certkey-400
+      secret:
+        defaultMode: 0400
+        secretName: bdms-dppsuser-non-ctao-certkey
+
+
+  #: extra volume mounts, e.g. to mount the acada directory into the prod_tests pod
+  volumeMounts:
+    - name: storage-1-data
+      mountPath: /storage-1/
+
+    - name: cafile
+      subPath: ca.pem
+      mountPath: /etc/grid-security/ca.pem
+
+    - name: dppsuser-certkey-400
+      mountPath: /opt/rucio/etc/userkey.pem
+      subPath: dppsuser.key.pem
+
+    - name: dppsuser-certkey-600
+      mountPath: /opt/rucio/etc/usercert.pem
+      subPath: dppsuser.pem
+
+    - name: dppsuser-non-dpps-certkey-400
+      mountPath: /opt/rucio/etc/nondppsuserkey.pem
+      subPath: dppsuser.key.pem
+
+    - name: dppsuser-non-dpps-certkey-600
+      mountPath: /opt/rucio/etc/nondppsusercert.pem
+      subPath: dppsuser.pem
+
+    - name: dppsuser-unprivileged-certkey-400
+      mountPath: /opt/rucio/etc/unprivilegeduserkey.pem
+      subPath: dppsuser.key.pem
+
+    - name: dppsuser-unprivileged-certkey-600
+      mountPath: /opt/rucio/etc/unprivilegedusercert.pem
+      subPath: dppsuser.pem
+
+    - name: dppsuser-non-ctao-certkey-400 # "dppsuser" prefixe is mandatory to generate user and certificate
+      mountPath: /opt/rucio/etc/nonctaouserkey.pem
+      subPath: dppsuser.key.pem
+
+    - name: dppsuser-non-ctao-certkey-600 # "dppsuser" prefixe is mandatory to generate user and certificate
+      mountPath: /opt/rucio/etc/nonctaousercert.pem
+      subPath: dppsuser.pem
+
+
+cert-generator-grid:
+  enabled: true
+  generatePreHooks: true
+
+  extra_server_names:
+  - iam.test.example
+  - voms.test.example
+  - rucio-storage-1
+  - rucio-storage-2
+  - rucio-storage-3
+  - fts
+
+  # List of users to create certificates for
+  users:
+  - name: DPPS User
+    suffix: ""
+  - name: DPPS User Unprivileged
+    suffix: "-unprivileged"
+  - name: Non-DPPS User
+    suffix: "-non-dpps"
+  - name: Non-CTAO User
+    suffix: "-non-ctao"
+
+
+# -- Starts containers with the same image as the one used in the deployment before all volumes are available. Saves time in the first deployment
+prepuller_enabled: true
+
+acada_ingest:
+  image:
+    # -- The container image repository for the ingestion daemon
+    repository: harbor.cta-observatory.org/dpps/bdms-client
+    # -- The specific image tag to use for the ingestion daemon
+    tag:
+
+  securityContext:
+    # -- The security context for the ingestion daemon, it defines the user and group IDs under which the container runs
+    runAsUser: 0
+    runAsGroup: 0
+    fsGroup: 0
+    supplementalGroups: []
+
+  workers:
+    enabled: true
+    replicas: 2
+    concurrency: 4
+    max_tasks_per_child: 20
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+        storage: "1Gi"
+      limits:
+        memory: "4Gi"
+        cpu: "2000m"
+        storage: "3Gi"
+    autoscaling:
+      min_replicas: 1
+      max_replicas: 10
+      target_cpu: 70
+      target_memory: 80
+
+  #: extra volumes, e.g. to mount the acada directory into the ingest pod
+  volumes:
+    - name: storage-1-data
+      persistentVolumeClaim:
+        claimName: storage-1-pvc
+
+    # cert-generator-grid test certs
+    - name: cafile
+      secret:
+        defaultMode: 0644
+        secretName: bdms-server-cafile
+    - name: dppsuser-cert
+      secret:
+        defaultMode: 0644
+        secretName: bdms-dppsuser-certkey
+    - name: dppsuser-key
+      secret:
+        defaultMode: 0400
+        secretName: bdms-dppsuser-certkey
+
+  #: extra volume mounts, e.g. to mount the acada directory into the ingest pod
+  volumeMounts:
+    - name: storage-1-data
+      mountPath: /storage-1/
+
+    - name: cafile
+      subPath: ca.pem
+      mountPath: /etc/grid-security/ca.pem
+
+    - name: cafile
+      subPath: ca.pem
+      mountPath: /etc/grid-security/certificates/74df993b.0
+
+    - name: cafile
+      subPath: dpps_test_ca.crl.r0
+      mountPath: /etc/grid-security/certificates/74df993b.r0
+
+    - name: dppsuser-cert
+      mountPath: /opt/rucio/etc/usercert.pem
+      subPath: dppsuser.pem
+
+    - name: dppsuser-key
+      mountPath: /opt/rucio/etc/userkey.pem
+      subPath: dppsuser.key.pem
+
+  daemon:
+    # -- The number of replicas of the ingestion daemon to run, set to 0 to disable the daemon
+    replicas: 0
+    service:
+      enabled: true
+      type: ClusterIP
+
+    config:
+      data_path: "/storage-1/"
+      offsite_copies: 2
+      rse: "STORAGE-1"
+      scope: "test_scope_persistent"
+      vo: "ctao.dpps.test"
+      # -- The port for the Prometheus metrics server
+      metrics_port: 8000
+
+      celery_broker_url: "redis://bdms-redis-master:6379/0"
+      celery_result_backend: "redis://bdms-redis-master:6379/1"
+      # -- celery task retry config
+      task_max_retries: 10
+      task_retry_backoff: true
+      task_retry_backoff_max: 600
+      task_retry_jitter: true
+
+      disable_metrics: false
+      # -- The logging level for the ingestion daemon
+      log_level: "DEBUG"
+      # -- The path to the log file, if not specified, logs to stdout
+      log_file: null
+      polling_interval: 1.0
+      lock_file: "/storage-1/bdms_ingest.lock"
+
+redis:
+  enabled: true
+  image:
+    registry: harbor.cta-observatory.org/proxy_cache
+    repository: bitnamilegacy/redis
+  global:
+    security:
+      ## Allows skipping image verification for harbor registry
+      allowInsecureImages: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+    persistence:
+      enabled: true
+      size: "8Gi"
+
+iam:
+  nameOverride: "dpps-iam"
+  enabled: true
+
+  iam:
+    mysql:
+      enabled: false
+
+    loginService:
+      config:
+        java:
+          opts: >-
+            -Xms512m -Xmx512m
+            -Djava.security.egd=file:/dev/./urandom
+            -Dspring.profiles.active=prod
+            -Dlogging.level.org.springframework.web=DEBUG
+            -Dlogging.level.com.indigo=DEBUG
+
+    ingress:
+      enabled: true
+      className: nginx
+      annotations:
+        nginx.ingress.kubernetes.io/ssl-redirect: 'true'
+        nginx.ingress.kubernetes.io/ssl-passthrough: 'true'
+      tls:
+        enabled: true
+        secretName: bdms-tls
+
+
+  cert-generator-grid:
+    enabled: false
+
+  dev:
+    client_image_tag:
+
+  bootstrap:
+    extraVolumeMounts:
+    - name: dppsuser-certkey-400
+      mountPath: /tmp/userkey.pem
+      subPath: dppsuser.key.pem
+    - name: dppsuser-certkey-600
+      mountPath: /tmp/usercert.pem
+      subPath: dppsuser.pem
+    - name: dppsuser-unprivileged-certkey-400
+      mountPath: /tmp/user-unprivileged-key.pem
+      subPath: dppsuser.key.pem
+    - name: dppsuser-unprivileged-certkey-600
+      mountPath: /tmp/user-unprivileged-cert.pem
+      subPath: dppsuser.pem
+    - name: dppsuser-non-dpps-certkey-400
+      mountPath: /tmp/user-non-dpps-key.pem
+      subPath: dppsuser.key.pem
+    - name: dppsuser-non-dpps-certkey-600
+      mountPath: /tmp/user-non-dpps-cert.pem
+      subPath: dppsuser.pem
+    - name: dppsuser-non-ctao-certkey-400 # "dppsuser" prefixe is mandatory to generate user and certificate
+      mountPath: /tmp/user-non-ctao-key.pem
+      subPath: dppsuser.key.pem
+    - name: dppsuser-non-ctao-certkey-600 # "dppsuser" prefixe is mandatory to generate user and certificate
+      mountPath: /tmp/user-non-ctao-cert.pem
+      subPath: dppsuser.pem
+
+    extraVolumes:
+    - name: dppsuser-certkey
+      secret:
+        defaultMode: 0644
+        secretName: bdms-dppsuser-certkey
+    - name: dppsuser-certkey-600
+      secret:
+        defaultMode: 0400
+        secretName: bdms-dppsuser-certkey
+    - name: dppsuser-certkey-400
+      secret:
+        defaultMode: 0400
+        secretName: bdms-dppsuser-certkey
+
+    - name: dppsuser-unprivileged-certkey
+      secret:
+        defaultMode: 0644
+        secretName: bdms-dppsuser-unprivileged-certkey
+    - name: dppsuser-unprivileged-certkey-600
+      secret:
+        defaultMode: 0600
+        secretName: bdms-dppsuser-unprivileged-certkey
+    - name: dppsuser-unprivileged-certkey-400
+      secret:
+        defaultMode: 0400
+        secretName: bdms-dppsuser-unprivileged-certkey
+    - name: dppsuser-non-dpps-certkey
+      secret:
+        defaultMode: 0644
+        secretName: bdms-dppsuser-non-dpps-certkey
+    - name: dppsuser-non-dpps-certkey-600
+      secret:
+        defaultMode: 0600
+        secretName: bdms-dppsuser-non-dpps-certkey
+    - name: dppsuser-non-dpps-certkey-400
+      secret:
+        defaultMode: 0400
+        secretName: bdms-dppsuser-non-dpps-certkey
+
+    - name: dppsuser-non-ctao-certkey-600 # "dppsuser" prefixe is mandatory to generate user and certificate
+      secret:
+        defaultMode: 0600
+        secretName: bdms-dppsuser-non-ctao-certkey
+    - name: dppsuser-non-ctao-certkey-400 # "dppsuser" prefixe is mandatory to generate user and certificate
+      secret:
+        defaultMode: 0400
+        secretName: bdms-dppsuser-non-ctao-certkey
+    config:
+      users:
+       - username: test-user
+         password: test-password
+         given_name: TestDpps
+         family_name: User
+         role: ROLE_USER
+         groups:
+         - ctao.dpps.test
+         email: dpps@test.example
+         subject_dn: "CN=DPPS User"
+         cert:
+           kind: env_var_file
+           env_var: X509_USER_CERT
+           default_path: /tmp/usercert.pem
+
+
+       - username: test-user-unprivileged
+         password: test-password
+         given_name: TestUnprivilegedDpps
+         family_name: User
+         role: ROLE_USER
+         groups:
+         - alt_ctao.dpps.test
+         email: unprivileged-dpps@test.example
+         subject_dn: "CN=DPPS User Unprivileged"
+         cert:
+           kind: env_var_file
+           env_var: X509_UNPRIVILEGED_DPPS_USER_CERT
+           default_path: /tmp/user-unprivileged-cert.pem
+
+
+       - username: test-user-non-dpps
+         password: test-password
+         given_name: TestNonDpps
+         family_name: User
+         role: ROLE_USER
+         groups:
+         email: non-dpps@test.example
+         subject_dn: "CN=Non-DPPS User"
+         cert:
+           kind: env_var_file
+           env_var: X509_NON_DPPS_USER_CERT
+           default_path: /tmp/user-non-dpps-cert.pem
+
+       - username: admin-user
+         password: test-password
+         given_name: TestAdmin
+         family_name: User
+         role: ROLE_ADMIN
+         groups:
+         - ctao.dpps.test
+         email: dpps@test.example
+
+       - username: test-user-non-ctao
+         password: test-password
+         given_name: TestNonCTAO
+         family_name: User
+         role: ROLE_USER
+         groups:
+         - non-ctao.test
+         email: non-ctao@test.example
+         subject_dn: "CN=Non-CTAO User"
+         cert:
+           kind: env_var_file
+           env_var: X509_NON-CTAO_USER_CERT
+           default_path: /tmp/user-non-ctao-cert.pem
+    image:
+      repository: harbor.cta-observatory.org/dpps/dpps-iam-client
+      tag:
+      pullPolicy: IfNotPresent
+    env:
+      - name: X509_NON_DPPS_USER_CERT
+        value: /tmp/user-non-dpps-cert.pem
+      - name: X509_UNPRIVILEGED_DPPS_USER_CERT
+        value: /tmp/user-unprivileged-cert.pem
+      - name: X509_NON-CTAO_USER_CERT
+        value: /tmp/user-non-ctao-cert.pem
+    tag:
+
+  vomsAA:
+    enabled: true
+    config:
+      host: voms.test.example
+      # this needs to match the group in IAM (TBC)
+      voName: ctao.dpps.test
+    deployment:
+      replicas: 1
+    ingress:
+      enabled: true
+      className: nginx
+      tls:
+        enabled: true
+    # LSC entries for test environment
+    lsc:
+      entries:
+        - "/CN=voms.test.example"
+        - "/CN=DPPS Development CA"
+
+    # Use smaller resources for testing
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    nginxVoms:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          memory: 256Mi
