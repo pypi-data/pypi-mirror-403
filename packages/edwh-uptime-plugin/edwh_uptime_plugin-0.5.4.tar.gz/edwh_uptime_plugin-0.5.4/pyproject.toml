@@ -1,0 +1,152 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "edwh-uptime-plugin"
+dynamic = ["version"]
+description = 'UptimeRobot plugin for `edwh`'
+readme = "README.md"
+requires-python = ">=3.10"
+license-expression = "MIT"
+keywords = ["edwh"]
+authors = [
+    { name = "Remco Boerma", email = "remco.b@educationwarehouse.nl" },
+    { name = "Robin van der Noord", email = "robin.vdn@educationwarehouse.nl" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+    'edwh>=0.38.0',
+    'yayarl',
+    'termcolor',
+    'tomli-w',
+    'typing-extensions',
+]
+
+[project.optional-dependencies]
+dev = [
+    "hatch",
+    # "python-semantic-release",
+    "black",
+    "isort",
+    "pytest",
+    "pytest-cov",
+]
+
+[project.urls]
+Documentation = "https://github.com/educationwarehouse/edwh-uptime-plugin#readme"
+Issues = "https://github.com/educationwarehouse/edwh-uptime-plugin/issues"
+Source = "https://github.com/educationwarehouse/edwh-uptime-plugin"
+
+# https://packaging.python.org/en/latest/guides/creating-and-discovering-plugins/#using-package-metadata
+[project.entry-points."edwh.tasks"]
+uptime = "edwh_uptime_plugin.tasks"
+
+[tool.hatch.version]
+path = "src/edwh_uptime_plugin/__about__.py"
+
+[tool.semantic_release]
+branch = "master"
+version_variable = "src/edwh_uptime_plugin/__about__.py:__version__"
+change_log = "CHANGELOG.md"
+upload_to_repository = false
+upload_to_release = false
+build_command = "hatch build"
+
+parser_angular_minor_types = "feat,minor"
+parser_angular_patch_types = "fix,perf,refactor,build,chore,patch"
+
+[tool.su6]
+# every checker:
+directory = "src"
+# 'all' and 'fix':
+include = []
+exclude = []
+# 'all':
+stop-after-first-failure = false
+# pytest:
+coverage = 100
+badge = false
+# --format json indent
+json-indent = 4
+
+[tool.black]
+target-version = ["py310"]
+line-length = 120
+skip-string-normalization = false
+
+[tool.isort]
+profile = "black"
+extend_skip_glob = ["*.bak/*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+extend-exclude = ["*.bak/", "venv*/"]
+
+[tool.ruff.lint]
+select = [
+    "F", # pyflake error
+    "E", # pycodestyle error
+    "W", # pycodestyle warning
+    "Q", # quotes
+    "A", # builtins
+    # "C4", # comprehensions - NO: doesn't allow dict()
+    # "RET", # return - NO: annoying
+    "SIM", # simplify
+    "ARG", # unused arguments
+    # "COM", # comma's - NO: annoying
+    # "PTH", # use pathlib - NO: annoying
+    "RUF", # ruff rules
+]
+unfixable = [
+    # Don't touch unused imports
+    "F401",
+]
+
+ignore = [
+    "RUF013" # implicit Optional
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["edwh_uptime_plugin"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests can use magic values, assertions, and relative imports
+"tests/**/*" = ["PLR2004", "S101", "TID252"]
+
+[tool.coverage.run]
+source_pkgs = ["edwh_uptime_plugin", "tests"]
+branch = true
+parallel = true
+omit = [
+    "src/edwh_uptime_plugin/__about__.py",
+]
+
+[tool.coverage.paths]
+edwh_uptime_plugin = ["src/edwh_uptime_plugin", "*/edwh-uptime-plugin/src/edwh_uptime_plugin"]
+tests = ["tests", "*/edwh-uptime-plugin/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "no cov",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.mypy]
+python_version = "3.10"
+
+# `some: int = None` looks nicer than `some: int | None = None` and pycharm still understands it
+no_implicit_optional = false  # I guess 'strict_optional' should be true, but disable this one because it's double!
