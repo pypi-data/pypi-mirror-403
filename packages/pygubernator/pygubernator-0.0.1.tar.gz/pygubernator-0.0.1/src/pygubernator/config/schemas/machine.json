@@ -1,0 +1,192 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://pygubernator.dev/schemas/machine.json",
+  "title": "PyGubernator State Machine Definition",
+  "description": "Schema for defining a finite state machine with states, transitions, guards, actions, and timeouts",
+  "type": "object",
+  "required": ["states", "transitions"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": {
+      "type": "object",
+      "description": "Metadata about the state machine definition",
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Version of this machine definition",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "machine_name": {
+          "type": "string",
+          "description": "Unique identifier for this state machine",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "strict_mode": {
+          "type": "boolean",
+          "description": "If true, raises error on undefined transitions",
+          "default": true
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of the machine"
+        }
+      },
+      "additionalProperties": true
+    },
+    "states": {
+      "type": "array",
+      "description": "List of state definitions",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/state"
+      }
+    },
+    "transitions": {
+      "type": "array",
+      "description": "List of transition definitions",
+      "items": {
+        "$ref": "#/definitions/transition"
+      }
+    },
+    "error_policy": {
+      "$ref": "#/definitions/error_policy"
+    }
+  },
+  "definitions": {
+    "state": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique state identifier",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "type": {
+          "type": "string",
+          "description": "Classification of state behavior",
+          "enum": ["initial", "stable", "terminal", "error"],
+          "default": "stable"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable state description"
+        },
+        "on_enter": {
+          "oneOf": [
+            {"type": "string"},
+            {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          ],
+          "description": "Actions to execute when entering this state"
+        },
+        "on_exit": {
+          "oneOf": [
+            {"type": "string"},
+            {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          ],
+          "description": "Actions to execute when exiting this state"
+        },
+        "timeout": {
+          "type": "object",
+          "description": "Automatic transition after timeout",
+          "required": ["seconds", "destination"],
+          "properties": {
+            "seconds": {
+              "type": "number",
+              "description": "Timeout duration in seconds",
+              "exclusiveMinimum": 0
+            },
+            "destination": {
+              "type": "string",
+              "description": "Target state on timeout"
+            }
+          },
+          "additionalProperties": false
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional user-defined metadata"
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "required": ["trigger", "source", "dest"],
+      "additionalProperties": true,
+      "properties": {
+        "trigger": {
+          "type": "string",
+          "description": "Event name that triggers this transition",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "source": {
+          "oneOf": [
+            {"type": "string"},
+            {
+              "type": "array",
+              "items": {"type": "string"},
+              "minItems": 1
+            }
+          ],
+          "description": "Valid source state(s) for this transition"
+        },
+        "dest": {
+          "type": "string",
+          "description": "Target state after transition"
+        },
+        "guards": {
+          "oneOf": [
+            {"type": "string"},
+            {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          ],
+          "description": "Guard conditions that must all pass"
+        },
+        "actions": {
+          "oneOf": [
+            {"type": "string"},
+            {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          ],
+          "description": "Actions to execute on successful transition"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable transition description"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional user-defined metadata"
+        }
+      }
+    },
+    "error_policy": {
+      "type": "object",
+      "description": "Global error handling configuration",
+      "properties": {
+        "default_fallback": {
+          "type": "string",
+          "description": "State to transition to on unhandled errors"
+        },
+        "retry_attempts": {
+          "type": "integer",
+          "description": "Number of retries before falling back",
+          "minimum": 0,
+          "default": 0
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}
