@@ -1,0 +1,40 @@
+"""Identity Activity Metrics object."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from pydantic import Field
+
+from ocsf._base import OCSFBaseModel
+
+if TYPE_CHECKING:
+    from ocsf.v1_7_0.objects.programmatic_credential import ProgrammaticCredential
+
+
+class IdentityActivityMetrics(OCSFBaseModel):
+    """The Identity Activity Metrics object captures usage patterns, authentication activity, credential usage and other metrics for identities across cloud and on-premises environments. Example identities include AWS IAM Users, Roles, Azure AD Principals, GCP Service Accounts, on-premises Active Directory accounts.
+
+    See: https://schema.ocsf.io/1.7.0/objects/identity_activity_metrics
+    """
+
+    first_seen_time: int | None = Field(
+        default=None,
+        description="The timestamp when this identity was first observed or created in the system. This helps establish the identity's age and lifecycle stage for risk assessment.",
+    )
+    last_authentication_time: int | None = Field(
+        default=None,
+        description="The timestamp when this identity last successfully authenticated to any system or service. This differs from <code>last_seen_time</code> as it specifically tracks authentication events rather than all activities.",
+    )
+    last_seen_time: int | None = Field(
+        default=None,
+        description="The timestamp of the most recent activity performed by this identity, including authentication, resource access, or API calls. This is the most comprehensive indicator of identity usage recency. [Recommended]",
+    )
+    password_last_used_time: int | None = Field(
+        default=None,
+        description="The timestamp when password-based authentication was last used by this identity. This helps distinguish between password and other authentication methods (MFA, SSO, certificates) and identify password-specific usage patterns.",
+    )
+    programmatic_credentials: list[ProgrammaticCredential] | None = Field(
+        default=None,
+        description="Details about the programmatic credentials associated with this identity, such as API keys, service account keys, access tokens, and client certificates used for automated access.",
+    )
