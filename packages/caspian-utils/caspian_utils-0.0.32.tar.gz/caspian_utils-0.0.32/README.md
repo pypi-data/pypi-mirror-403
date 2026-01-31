@@ -1,0 +1,180 @@
+# Caspian Utils (`casp`)
+
+Python is finally reactive.
+
+**Caspian Utils** is the core utility package behind the Caspian framework ecosystem. It provides the building blocks used by Caspian projects: FastAPI-first plumbing, HTML/template processing, reactive integration patterns, RPC helpers, and common DX utilities.
+
+- **PyPI package name:** `casp`
+- **Framework/brand name:** Caspian (Caspian Utils is the shared library)
+
+---
+
+## Why Caspian Utils?
+
+Modern web stacks often require a separate Node backend, bundlers, and a growing set of conventions. Caspian projects remove that complexity while keeping the power:
+
+- Keep the **DOM as the source of truth**
+- Write **async Python** for server logic
+- Call server functions directly from the UI via **RPC**
+- Ship without a bundler or build pipeline
+
+Caspian Utils exists to make those patterns reusable across apps and tooling.
+
+---
+
+## Key Capabilities
+
+### FastAPI engine (native async)
+
+Run application logic in **async Python** and leverage the FastAPI ecosystem (middleware, dependency injection, validation, Starlette sessions, etc.).
+
+### Reactive DOM (no build step)
+
+Modify HTML and see changes instantly. No Webpack/Vite required. The DOM is the runtime surface.
+
+### File-system routing
+
+Create pages like:
+
+```text
+app/users/index.py
+app/users/index.html
+```
+
+Caspian projects mount routes automatically based on your folder structure.
+
+### Type-safe RPC (no API routes)
+
+Call Python functions directly from the frontend without manually creating REST endpoints.
+
+### Prisma ORM integration (optional)
+
+Define your schema once and use an auto-generated, type-safe client in Python (no SQL boilerplate).
+
+---
+
+## Installation
+
+```bash
+pip install caspian-utils
+```
+
+**Python:** `>=3.11`
+
+---
+
+## Quick Start (Conceptual)
+
+A typical Caspian-style app is split into:
+
+- `app/**/index.html` for UI
+- `app/**/index.py` (or actions modules) for backend logic / RPC
+- optional `app/**/layout.html` for nested layouts
+
+### 1) Reactive UI in HTML
+
+```html
+<!-- app/todos/index.html -->
+
+<!-- 1. Import Python Components -->
+<!-- @import { Badge } from ../components/ui -->
+
+<div class="flex gap-2 mb-4">
+  <Badge variant="default">Tasks: {todos.length}</Badge>
+</div>
+
+<!-- 2. Reactive loop -->
+<ul>
+  <template pp-for="todo in todos">
+    <li key="{todo.id}" class="p-2 border-b">{todo.title}</li>
+  </template>
+</ul>
+
+<script>
+  // 3. State initialized by Python backend automatically
+  const [todos, setTodos] = pp.state([[todos]]);
+</script>
+```
+
+### 2) Direct async RPC in Python
+
+```py
+# actions.py
+
+from casp.rpc import rpc
+from src.lib.prisma.db import prisma
+
+@rpc(require_auth=True)
+async def like_post(post_id: str):
+    # 1. Direct DB access (async)
+    post = await prisma.post.update(
+        where={"id": post_id},
+        data={"likes": {"increment": 1}},
+    )
+    # 2. Return data directly to frontend
+    return post.likes
+```
+
+### 3) Call RPC from the frontend
+
+```html
+<button onclick="likePost()">Like Post</button>
+
+<script>
+  async function likePost() {
+    const newCount = await pp.rpc("like_post", { post_id: "123" });
+    setLikes(newCount);
+  }
+</script>
+```
+
+---
+
+## What’s Included
+
+Caspian Utils ships with integrations commonly used in Caspian projects:
+
+- `fastapi`, `uvicorn`
+- `jinja2` (templating)
+- `beautifulsoup4` (HTML processing)
+- `python-dotenv` (env loading)
+- `slowapi` (rate limiting)
+- `starsessions` (session management)
+- `python-multipart` (uploads)
+- `httpx` (HTTP client)
+- `tailwind-merge` (class merging utility)
+- `werkzeug` (helpers; used in some tooling)
+- ID utilities: `cuid2`, `nanoid`, `python-ulid`
+
+(Exact dependencies may vary by version; see `setup.py` in the repository.)
+
+---
+
+## Packaging Notes
+
+If you are publishing to PyPI under `caspian-utils`, ensure your `setup.py` matches:
+
+```py
+setup(
+    name="caspian-utils",
+    # ...
+)
+```
+
+---
+
+## Repository
+
+[Repository](https://github.com/TheSteelNinjaCode/casp)
+
+---
+
+## License
+
+MIT
+
+---
+
+## Author
+
+Jefferson Abraham
