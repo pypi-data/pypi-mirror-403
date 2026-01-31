@@ -1,0 +1,132 @@
+Metadata-Version: 2.4
+Name: mores-encryption
+Version: 0.1.0
+Summary: Lightweight, production-grade AES/Fernet encryption & deterministic hashing library.
+Author-email: Hemant Kumar <hemant.kumardeveloper@gmail.com>
+License: MIT License
+        
+        Copyright (c) 2026 Hemant Kumar
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+        
+Project-URL: Homepage, https://github.com/HATAKEkakshi/mores-encryption.git
+Project-URL: Documentation, https://github.com/HATAKEkakshi/mores-encryption.git
+Project-URL: Source, https://github.com/HATAKEkakshi/mores-encryption.git
+Project-URL: Issues, https://github.com/HATAKEkakshi/mores-encryption/issues
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: cryptography>=42.0.0
+Dynamic: license-file
+
+# mores-encryption
+
+![PyPI - Version](https://img.shields.io/pypi/v/mores-encryption?style=for-the-badge&color=blue)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/mores-encryption?style=for-the-badge&color=blue)
+![License](https://img.shields.io/pypi/l/mores-encryption?style=for-the-badge&color=green)
+![Build Status](https://img.shields.io/github/actions/workflow/status/HATAKEkakshi/mores-encryption/publish.yml?style=for-the-badge&label=Build)
+
+
+Lightweight, production-grade encryption library for Python.
+
+This library provides a simple interface for AES-128 (Fernet) encryption and deterministic hashing (PBKDF2-HMAC-SHA256), designed for secure data handling in production environments.
+
+## Features
+
+- **AES-128 Encryption**: Uses the Fernet standard for symmetric encryption (AES-128 in CBC mode + HMAC-SHA256).
+- **Deterministic Hashing**: Securely hash sensitive data (e.g., emails) for searchability.
+- **Production Ready**: Includes proper logging, type hinting, and error handling.
+- **Secure Defaults**: Automatic key generation and URL-safe Base64 encoding.
+
+## Installation
+
+```bash
+pip install mores-encryption
+```
+
+## Configuration
+
+The library uses environment variables for configuration. You can set these in your `.env` file or export them in your shell.
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `ENCRYPTION_KEY` | Base64-encoded 32-byte Fernet key. | No (Auto-generated if missing) | N/A |
+
+### Key & Salt Generation
+
+Run these commands in your terminal to generate secure values for your `.env` file:
+
+**Generate Encryption Key:**
+```bash
+python -c "from cryptography.fernet import Fernet; print('ENCRYPTION_KEY=' + Fernet.generate_key().decode())"
+```
+
+**Generate Salt (for deterministic hashing):**
+```bash
+python -c "import secrets; print('EMAIL_SALT=' + secrets.token_urlsafe(16))"
+```
+
+**Step-by-Step Setup:**
+1. Run the commands above.
+2. Copy the output (e.g., `ENCRYPTION_KEY=...`).
+3. Paste it into your `.env` file in the project root.
+
+> **Note**: For a complete integration example, refer to `integration.ipynb` (if included in the examples).
+
+## Usage
+
+### Basic Encryption
+
+```python
+from mores_encryption.encryption import encryption_service
+
+# Encrypt data
+encrypted_text = encryption_service.encrypt("Sensitive Data")
+print(f"Encrypted: {encrypted_text}")
+
+# Decrypt data
+decrypted_text = encryption_service.decrypt(encrypted_text)
+print(f"Decrypted: {decrypted_text}")
+```
+
+### Deterministic Hashing
+
+Use this for searching encrypted fields (e.g., finding a user by email without storing the plain email).
+
+```python
+from mores_encryption.encryption import encryption_service
+
+email = "user@example.com"
+salt = "application_specific_salt_value"
+
+# Generate hash
+# Note: Salt must remain constant for the hash to be reproducible.
+email_hash = encryption_service.hash(email, salt)
+print(f"Hash: {email_hash}")
+```
+
+## Security Implementation Details
+
+- **Encryption**: `cryptography.fernet.Fernet` (AES-128 CBC with PKCS7 padding, HMAC-SHA256 for integrity).
+- **Hashing**: PBKDF2HMAC-SHA256 with configurable iterations (default: 200,000) and a 32-byte output length.
+- **Encoding**: All outputs are URL-safe Base64 encoded strings.
+
+## License
+
+MIT License
