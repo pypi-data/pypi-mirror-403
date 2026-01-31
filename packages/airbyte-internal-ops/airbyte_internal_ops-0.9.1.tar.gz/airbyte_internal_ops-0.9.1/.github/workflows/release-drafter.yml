@@ -1,0 +1,94 @@
+name: Release Drafter
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: release-drafter
+  cancel-in-progress: false
+
+jobs:
+  draft_release:
+    name: Draft Release
+    permissions:
+      contents: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create or update draft release
+        # This repo is a canary for release drafter, intentionally not version-pinned.
+        uses: aaronsteers/semantic-pr-release-drafter@main
+        id: release-drafter
+        with:
+          categories: |
+            # Sentry categories evaluated first (to catch all sentry items before generic categories)
+            - title: '🛡️ Sentry Updates'
+              commit-scopes:
+                - 'sentry'
+              display-order: 200
+            # MCP and CLI features as separate sections
+            - title: '❇️ MCP Features'
+              commit-scopes:
+                - 'mcp'
+              commit-types:
+                - 'feat'
+              display-order: 100
+            - title: '💻 CLI Features'
+              commit-scopes:
+                - 'cli'
+              commit-types:
+                - 'feat'
+              display-order: 101
+            # Generic categories (will only catch non-sentry items due to evaluation order)
+            - title: '🚀 New Capabilities'
+              commit-types:
+                - 'feat'
+              display-order: 102
+            - title: '🐛 Bug Fixes'
+              commit-types:
+                - 'fix'
+              display-order: 103
+            - title: '⚙️ Under the Hood'
+              commit-types:
+                - 'chore'
+                - 'ci'
+                - 'build'
+                - 'refactor'
+                - 'test'
+                - 'perf'
+                - 'docs'
+              collapse-after: 3
+              display-order: 999
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+
+      - name: Checkout Repo
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Build package
+        env:
+          TAG_NAME: ${{ steps.release-drafter.outputs.tag-name }}
+        run: |
+          echo "Building with version from tag: ${TAG_NAME}"
+          # Strip 'v' prefix for uv-dynamic-versioning
+          UV_DYNAMIC_VERSIONING_BYPASS="${TAG_NAME#v}" uv build
+
+      - name: Attach assets to draft release
+        # This repo is a canary for release drafter, intentionally not version-pinned.
+        uses: aaronsteers/semantic-pr-release-drafter@main
+        with:
+          attach-files: |
+            dist/*.whl
+            dist/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
