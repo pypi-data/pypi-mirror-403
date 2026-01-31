@@ -1,0 +1,101 @@
+api:
+  collections:
+    icici_otp:
+      name: "ICICI Login + OTP API Collection"
+      base_url: "https://uat-onprem-dmz-hybrid.icicibank.com"
+      global_headers:
+        apikey: "ncYewmU1JrMsBLRwf79xsdUquLDYSmaeGTzjI1E4vAJ11v5Z"
+        content-type: "application/json"
+
+      apis:
+        auth_token:
+          name: "Login - Get Access Token"
+          endpoint: "/v1/login/banks/v2/oAuth/token"
+          request:
+            method: POST
+            timeout: 15
+            body:
+              grant_type: "password"
+              client_id: "cecebd911389e647574c"
+              client_secret: "43e0aa51f687ba1990c271c5597524da2a8929da1b7947bea2778e9c5ba7"
+              bank_id: "ICI"
+              username: "${user_id}"
+              password: "P1ZAv2p7nDCudGLZHgVLVg=="
+              language_id: "001"
+              channel_id: "M"
+              device_type: "7"
+              ip_address: "127.0.0.4"
+              machine_fingerprint:
+                VERSION: "1.0"
+                ExternalIP: "125.16.230.18"
+                MESC:
+                  mesc: "mi=2;cd=200;id=50;mesc=162292;ldi=225;mesc=143499;ldi=249"
+                MFP:
+                  System:
+                    Platform: "Win32"
+                    Timezone: "-330"
+                  Screen:
+                    FullHeight: 768
+                    AvlHeight: 728
+                    FullWidth: 1366
+                    AvlWidth: 1366
+                    BufferDepth: ""
+                    ColorDepth: 24
+                    PixelDepth: 24
+                    DeviceXDPI: ""
+                    DeviceYDPI: ""
+                    FontSmoothing: ""
+                    UpdateInterval: ""
+                  Browser:
+                    UserAgent: "Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.122 Safari/537.36"
+                    Vendor: "Google Inc."
+                    VendorSubID: ""
+                    BuildID: ""
+                    CookieEnabled: true
+          expected_result:
+            expected_status: 200
+            jsonpath_assertions:
+              - path: $.access_token
+                condition: "len($) > 0"
+            extract:
+              access_token: access_token
+
+        send_otp:
+          name: "Send OTP"
+          endpoint: "/v1/login/banks/users/customusers/otp/sendotp"
+          request:
+            method: POST
+            timeout: 10
+            headers:
+              Authorization: "${access_token}"
+            body:
+              bankId: "ICI"
+              userId: "${user_id}"
+              txnType: "GEN"
+          expected_result:
+            expected_status: 401
+            jsonpath_assertions:
+              - path: $.txnType
+                condition: "$ == 'GEN'"
+
+        resend_otp:
+          name: "Resend OTP"
+          endpoint: "/v1/login/banks/users/customusers/otp/resendotp"
+          request:
+            method: POST
+            timeout: 10
+            headers:
+              Authorization: "${access_token}"
+            body:
+              bankId: "ICI"
+              userId: "${user_id}"
+              txnType: "OTP"
+          expected_result:
+            expected_status: 200
+            jsonpath_assertions:
+              - path: $.txnType
+                condition: "$ == 'OTP'"
+              - path: $.dummy
+                condition: "len($) == 6"
+            extract:
+              otp: dummy

@@ -1,0 +1,122 @@
+api:
+  collections:
+    mozark_integration:
+      name: "Mozark Integration APIs"
+      base_url: "https://integration-api.mozark.ai"
+      global_headers:
+        accept: "application/json, text/plain, */*"
+        accept-language: "en-US,en;q=0.9"
+        content-type: "application/json"
+        dnt: "1"
+        origin: "https://uat-tcm.mozark.ai"
+        priority: "u=1, i"
+        referer: "https://uat-tcm.mozark.ai/"
+        sec-ch-ua: '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"'
+        sec-ch-ua-mobile: "?0"
+        sec-ch-ua-platform: '"macOS"'
+        sec-fetch-dest: empty
+        sec-fetch-mode: cors
+        sec-fetch-site: same-site
+        user-agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+
+      apis:
+        login_user:
+          name: "Mozark Login"
+          description: "Login to retrieve IdToken, AccessToken and RefreshToken"
+          endpoint: "/auth/login"
+          request:
+            method: POST
+            timeout: 30
+            body:
+              organization: "${organization}"
+              user: "${user}"
+              password: "${password}"
+          expected_result:
+            expected_status: 200
+            json_schema:
+              type: object
+              required: [result]
+              properties:
+                result:
+                  type: object
+                  required: [AuthenticationResult]
+                  properties:
+                    AuthenticationResult:
+                      type: object
+                      required: [AccessToken, IdToken, RefreshToken]
+                      properties:
+                        AccessToken:
+                          type: string
+                        IdToken:
+                          type: string
+                        RefreshToken:
+                          type: string
+            jsonpath_assertions:
+              - path: $.result.AuthenticationResult.AccessToken
+                condition: "len($) > 0"
+              - path: $.result.AuthenticationResult.IdToken
+                condition: "len($) > 0"
+            extract:
+              mozark_access_token: result.AuthenticationResult.AccessToken
+              mozark_id_token: result.AuthenticationResult.IdToken
+              mozark_refresh_token: result.AuthenticationResult.RefreshToken
+
+        list_devices:
+          name: "Fetch Devices"
+          description: "Retrieve list of devices for test execution"
+          endpoint: "/v1/testexecute/devices?testType=app-automation,app-automate"
+          request:
+            method: GET
+            timeout: 30
+            headers:
+              authorization: "Bearer ${mozark_id_token}"  # Use IdToken from login
+          expected_result:
+            expected_status: 200
+            json_schema:
+              type: object
+              required: [status, message, data]
+              properties:
+                status:
+                  type: integer
+                  enum: [200]
+                message:
+                  type: string
+                data:
+                  type: object
+                  required: [list]
+                  properties:
+                    list:
+                      type: array
+            jsonpath_assertions:
+              - path: $.status
+                condition: "$ == 200"
+    mozark_integration_tcm:
+      name: "Mozark Integration APIs for TCM"
+      base_url: "https://orchestrator-api.mozark.ai"
+      global_headers:
+        accept: "application/json, text/plain, */*"
+        accept-language: "en-US,en;q=0.9"
+        content-type: "application/json"
+        dnt: "1"
+        origin: "https://uat-tcm.mozark.ai"
+        priority: "u=1, i"
+        referer: "https://uat-tcm.mozark.ai/"
+        sec-ch-ua: '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"'
+        sec-ch-ua-mobile: "?0"
+        sec-ch-ua-platform: '"macOS"'
+        sec-fetch-dest: empty
+        sec-fetch-mode: cors
+        sec-fetch-site: same-site
+        user-agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+      apis:
+        list_project:
+          name: "List Projects"
+          description: "Retrieve list of projects"
+          endpoint: "/tags/merged/projects"
+          request:
+            method: GET
+            timeout: 30
+            headers:
+              authorization: "Bearer ${mozark_id_token}"  # Use idtoken from login
+          expected_result:
+            expected_status: 200

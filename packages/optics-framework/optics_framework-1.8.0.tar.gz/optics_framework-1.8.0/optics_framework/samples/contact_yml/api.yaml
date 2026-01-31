@@ -1,0 +1,202 @@
+api:
+  collections:
+    # Define your first collection of APIs
+    authentication_apis:
+      name: "Authentication and OTP APIs"
+      base_url: "https://api.example.com" # Base URL for APIs in this collection
+      global_headers:
+        apikey: "ncYewmU1JrMsBLRwf79xsdUquLDYSmaeGTzjI1E4vAJ11v5Z" # Global API key for this collection
+      apis: # APIs belonging to this collection
+        post_token:
+          name: "Token Generation"
+          description: "Generate OAuth token using client and  user credentials"
+          endpoint: "/v1/login/banks/v2/oAuth/token" # This will be appended to base_url of this collection
+          request:
+            method: POST
+            timeout: 10 # Added timeout in seconds for this API
+            headers:
+              Content-Type: application/json
+            body:
+              grant_type: password
+              client_id: cecebd911389e647574c
+              client_secret: 43e0aa51f687ba1990c271c5597524da2a8929da1b7947bea2778e9c5ba7
+              bank_id: ICI
+              username: 558334427
+              password: P1ZAv2p7nDCudGLZHgVLVg==
+              language_id: "001"
+              channel_id: M
+              device_type: "7"
+              ip_address: 127.0.0.4
+              machine_fingerprint:
+                VERSION: "1.0"
+                ExternalIP: 125.16.230.18
+                MESC:
+                  mesc: "mi=2;cd=200;id=50;mesc=162292;ldi=225;mesc=143499;ldi=249"
+                MFP:
+                  System:
+                    Platform: Win32
+                    Timezone: "-330"
+                  Screen:
+                    FullHeight: 768
+                    AvlHeight: 728
+                    FullWidth: 1366
+                    AvlWidth: 1366
+                    BufferDepth: ""
+                    ColorDepth: 24
+                    PixelDepth: 24
+                    DeviceXDPI: ""
+                    DeviceYDPI: ""
+                    FontSmoothing: ""
+                    UpdateInterval: ""
+                  Browser:
+                    UserAgent: "Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.122 Safari/537.36"
+                    Vendor: "Google Inc."
+                    VendorSubID: ""
+                    BuildID: ""
+                    CookieEnabled: true
+          expected_result: # optional parameter
+            expected_status: 200 # Only expect a successful 200 status
+            json_schema: # Validate against the successful response schema
+              type: object
+              required:
+                - access_token
+                - token_type
+                - expires_in
+                - user
+              properties:
+                access_token:
+                  type: string
+                  minLength: 1
+                token_type:
+                  type: string
+                  enum: [bearer]
+                expires_in:
+                  type: integer
+                  minimum: 0
+                user:
+                  type: object
+                  required:
+                    - userId
+                  properties:
+                    userId:
+                      type: string
+                      pattern: "^[0-9]+$" # Example: userId should be a string of digits
+            jsonpath_assertions: # Optional parameter
+              - path: $.access_token
+                condition: "len($) > 0"
+              - path: $.user.userId
+                condition: "$ == '558334427'"
+            extract:            # Optional parameter to extract values for use in subsequent API calls
+              auth_token: access_token
+
+        send_otp:
+          name: "Send OTP"
+          description: "Send OTP to user"
+          endpoint: "/v1/login/banks/users/customusers/otp/sendotp"
+          request:
+            method: POST
+            timeout: 5 # Timeout for send_otp
+            headers:
+              Authorization: "${auth_token}"
+              Content-Type: application/json
+            body:
+              bankId: ICI
+              userId: "${user_id}"
+              txnType: GEN
+          expected_result:
+            expected_status: 200
+            json_schema: # Only validate the successful response schema
+              type: object
+              required:
+                - txnType
+              properties:
+                txnType:
+                  type: string
+                  enum: [GEN]
+
+        resend_otp:
+          name: "Resend OTP"
+          description: "Resend OTP for user"
+          endpoint: "/v1/login/banks/users/customusers/otp/resendotp"
+          request:
+            method: POST
+            timeout: 5 # Timeout for resend_otp
+            headers:
+              Authorization: "${auth_token}"
+              Content-Type: application/json
+            body:
+              bankId: ICI
+              userId: "${user_id}"
+              txnType: OTP
+          expected_result:
+            expected_status: 200
+            json_schema: # Only validate the successful response schema
+              type: object
+              required:
+                - txnType
+              properties:
+                dummy:
+                  type: string
+                  enum: [OTP]
+                txnType:
+                  type: string
+                  enum: [OTP]
+            extract:
+              dummy_token: dummy
+
+    # Define another collection for a different set of APIs or a different base URL
+    user_management_apis:
+      name: "User Management APIs"
+      base_url: "https://user.api.example.com"
+      global_headers:
+        user_api_key: "another_specific_key"
+        Accept: "application/json"
+      apis:
+        create_user:
+          name: "Create User"
+          description: "Create a new user account"
+          endpoint: "/v1/users"
+          request:
+            method: POST
+            timeout: 15 # Timeout for create_user
+            headers:
+              Content-Type: application/json
+            body:
+              username: "testuser"
+              email: "test@example.com"
+              password: "SecurePassword123"
+          expected_result:
+            expected_status: 201
+            json_schema: # Only validate the successful response schema
+              type: object
+              required:
+                - id
+                - username
+              properties:
+                id: { type: string }
+                username: { type: string }
+
+        get_user_profile:
+          name: "Get User Profile"
+          description: "Retrieve a user's profile by ID"
+          endpoint: "/v1/users/${user_id}" # Example of using extracted variable
+          request:
+            method: GET
+            timeout: 8 # Timeout for get_user_profile
+          expected_result:
+            expected_status: 200
+            json_schema: # Only validate the successful response schema
+              type: object
+              required:
+                - id
+                - username
+                - email
+              properties:
+                id: { type: string }
+                username: { type: string }
+                email: { type: string, format: "email" }
+            jsonpath_assertions:
+              - path: $.username
+                condition: "$ == 'testuser'"
+            extract:
+              user_id: id # Extract user ID for subsequent calls
