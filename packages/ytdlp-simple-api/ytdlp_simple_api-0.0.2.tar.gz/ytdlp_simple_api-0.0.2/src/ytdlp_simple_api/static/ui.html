@@ -1,0 +1,272 @@
+<!--
+YT-DLP Simple Web UI
+Writen by Anthropic Claude Opus 4.5
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>YT-DLP Simple — Downloader</title>
+    <link href="/static/ui.css" rel="stylesheet">
+</head>
+<body>
+<main class="app" id="app">
+    <header class="app__header">
+        <h1 class="app__title">YT-DLP Simple</h1>
+        <nav class="app__nav">
+            <a class="app__nav-link" href="/cookies-ui"> Add Cookies →</a>
+        </nav>
+    </header>
+
+    <!-- Auth Section -->
+    <section class="auth" id="auth-section">
+        <div class="auth__field">
+            <label class="auth__label" for="auth-token">API Token (optional)</label>
+            <input
+                    autocomplete="off"
+                    class="auth__input"
+                    id="auth-token"
+                    placeholder="Bearer token..."
+                    type="password"
+            >
+            <button aria-label="Show/hide token" class="auth__toggle" id="auth-toggle" type="button">👁</button>
+        </div>
+        <p class="auth__hint">Token is saved in browser's local storage</p>
+    </section>
+
+    <!-- Mode Selection -->
+    <section class="mode-selector" id="mode-selector">
+        <label class="mode-selector__label">Download Mode</label>
+        <div class="mode-selector__buttons">
+            <button class="mode-selector__btn mode-selector__btn--active" data-mode="best-audio" type="button">
+                Best Audio
+            </button>
+            <button class="mode-selector__btn" data-mode="transcription-audio" type="button">
+                Transcription
+            </button>
+            <button class="mode-selector__btn" data-mode="video-for-chat" type="button">
+                Video for Chat
+            </button>
+            <button class="mode-selector__btn" data-mode="best-quality" type="button">
+                Best Quality
+            </button>
+            <button class="mode-selector__btn" data-mode="manual" type="button">
+                Manual
+            </button>
+        </div>
+    </section>
+
+    <!-- Download Form -->
+    <form
+            action="javascript:void(0);"
+            class="download-form"
+            id="download-form"
+            method="post"
+            onsubmit="return false;"
+    >
+        <!-- URL Input (always visible) -->
+        <div class="form-group form-group--url">
+            <label class="form-group__label" for="input-url">Video URL</label>
+            <input
+                    class="form-group__input"
+                    id="input-url"
+                    name="url"
+                    placeholder="https://youtube.com/watch?v=..."
+                    required
+                    type="url"
+            >
+        </div>
+
+        <!-- Common Options -->
+        <fieldset class="options-group options-group--common" id="options-common">
+            <legend class="options-group__legend">Common Options</legend>
+
+            <div class="form-group form-group--inline-options">
+                <div class="inline-options">
+                    <!-- Language toggle -->
+                    <div class="inline-options__item" id="group-prefer-lang">
+                        <div class="toggle-switch">
+                            <button class="toggle-switch__btn toggle-switch__btn--active" data-lang="ru,en" type="button"><span class="ru"></span>Russian first</button>
+                            <button class="toggle-switch__btn" data-lang="en,ru" type="button"><span class="en"></span>English First</button>
+                        </div>
+                        <input id="input-prefer-lang" name="prefer_lang" type="hidden" value="ru,en">
+                    </div>
+
+                    <!-- SponsorBlock toggle -->
+                    <div class="inline-options__item" id="group-sponsorblock">
+                        <button class="toggle-btn toggle-btn--active" id="btn-sponsorblock" type="button">
+                            ✂️ Skip Sponsors
+                        </button>
+                        <input id="input-sponsorblock" name="sponsorblock" type="hidden" value="true">
+                    </div>
+                </div>
+            </div>
+        </fieldset>
+
+        <!-- Transcription Options -->
+        <fieldset class="options-group options-group--transcription hidden" id="options-transcription">
+            <legend class="options-group__legend">Transcription Options</legend>
+
+            <div class="form-group form-group--sample-rate">
+                <label class="form-group__label" for="input-sample-rate">Sample Rate</label>
+                <select class="form-group__select" id="input-sample-rate" name="sample_rate">
+                    <option selected value="16000">16 kHz (Whisper, Vosk)</option>
+                    <option value="24000">24 kHz (higher quality)</option>
+                </select>
+            </div>
+
+            <div class="form-group form-group--output-format">
+                <label class="form-group__label" for="input-output-format">Output Format</label>
+                <select class="form-group__select" id="input-output-format" name="output_format">
+                    <option selected value="opus">Opus (smallest)</option>
+                    <option value="flac">FLAC (lossless)</option>
+                    <option value="pcm">PCM/WAV (uncompressed)</option>
+                </select>
+            </div>
+        </fieldset>
+
+        <!-- Quality Options (best-quality, manual) -->
+        <fieldset class="options-group options-group--quality hidden" id="options-quality">
+            <legend class="options-group__legend">Quality Options</legend>
+
+            <div class="form-group form-group--container">
+                <label class="form-group__label" for="input-container">Container</label>
+                <select class="form-group__select" id="input-container" name="container">
+                    <option selected value="mp4">MP4 (universal)</option>
+                    <option value="mkv">MKV (flexible)</option>
+                    <option value="webm">WebM (web-native)</option>
+                    <option value="mov">MOV (Apple)</option>
+                </select>
+            </div>
+        </fieldset>
+
+        <!-- Manual Options -->
+        <fieldset class="options-group options-group--manual hidden" id="options-manual">
+            <legend class="options-group__legend">Manual Settings</legend>
+
+            <div class="form-group form-group--resolution">
+                <label class="form-group__label" for="input-resolution">Max Resolution</label>
+                <select class="form-group__select" id="input-resolution" name="max_resolution">
+                    <option value="8k">8K (4320p)</option>
+                    <option selected value="4k">4K (2160p)</option>
+                    <option value="1440p">1440p (2K)</option>
+                    <option value="1080p">1080p (Full HD)</option>
+                    <option value="720p">720p (HD)</option>
+                    <option value="480p">480p (SD)</option>
+                    <option value="360p">360p</option>
+                    <option value="240p">240p</option>
+                    <option value="144p">144p</option>
+                </select>
+            </div>
+
+            <div class="form-group form-group--audio-bitrate">
+                <label class="form-group__label" for="input-audio-bitrate">Audio Bitrate</label>
+                <select class="form-group__select" id="input-audio-bitrate" name="audio_bitrate">
+                    <option selected value="best">Best</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                </select>
+            </div>
+
+            <div class="form-group form-group--vcodec">
+                <label class="form-group__label" for="input-vcodec">Video Codec</label>
+                <select class="form-group__select" id="input-vcodec" name="vcodec">
+                    <option selected value="avc">AVC/H.264 (compatible)</option>
+                    <option value="hevc">HEVC/H.265 (efficient)</option>
+                    <option value="vp9">VP9 (YouTube native)</option>
+                    <option value="av1">AV1 (best compression)</option>
+                </select>
+            </div>
+
+            <div class="form-group form-group--acodec">
+                <label class="form-group__label" for="input-acodec">Audio Codec</label>
+                <select class="form-group__select" id="input-acodec" name="acodec">
+                    <option selected value="opus">Opus (best quality)</option>
+                    <option value="aac">AAC (compatible)</option>
+                </select>
+            </div>
+
+            <div class="form-group form-group--speech-lang">
+                <label class="form-group__label" for="input-speech-lang">Speech Language</label>
+                <select class="form-group__select" id="input-speech-lang" name="speech_lang">
+                    <option value="orig">Original (no filter)</option>
+                    <option selected value="ru">Russian</option>
+                    <option value="en">English</option>
+                </select>
+            </div>
+
+            <div class="form-group form-group--checkbox">
+                <label class="form-group__label">
+                    <input
+                            class="form-group__checkbox"
+                            id="input-limit-fps"
+                            name="limit_fps"
+                            type="checkbox"
+                    >
+                    <span class="form-group__checkbox-text">Limit to 30 FPS</span>
+                </label>
+            </div>
+
+            <div class="form-group form-group--container-manual">
+                <label class="form-group__label" for="input-container-manual">Container</label>
+                <select class="form-group__select" id="input-container-manual" name="container_manual">
+                    <option selected value="mp4">MP4</option>
+                    <option value="mkv">MKV</option>
+                    <option value="webm">WebM</option>
+                    <option value="mov">MOV</option>
+                </select>
+            </div>
+        </fieldset>
+
+        <!-- Submit -->
+        <div class="form-actions">
+            <button class="form-actions__submit" id="btn-download" type="submit">
+                <span class="form-actions__submit-text">Download</span>
+                <span class="form-actions__submit-loading hidden">Downloading...</span>
+            </button>
+        </div>
+    </form>
+
+    <!-- Status & Results -->
+    <section class="results" id="results-section">
+        <div class="results__status hidden" id="results-status">
+            <span class="results__status-icon" id="status-icon"></span>
+            <span class="results__status-text" id="status-text"></span>
+        </div>
+
+        <div class="results__file hidden" id="results-file">
+            <a class="results__link" href="#" id="results-link" rel="noopener" target="_blank">
+                Download File
+            </a>
+            <span class="results__filename" id="results-filename"></span>
+        </div>
+
+        <div class="results__warnings hidden" id="results-warnings">
+            <h4 class="results__warnings-title">Warnings:</h4>
+            <ul class="results__warnings-list" id="warnings-list"></ul>
+        </div>
+
+        <div class="results__error hidden" id="results-error">
+            <h4 class="results__error-title">Error:</h4>
+            <p class="results__error-text" id="error-text"></p>
+        </div>
+    </section>
+
+    <!-- Files List -->
+    <section class="files-list" id="files-section">
+        <h2 class="files-list__title">
+            Available Files
+            <button class="files-list__refresh" id="btn-refresh-files" type="button">↻ Refresh</button>
+        </h2>
+        <div class="files-list__content__warning hide" id="files-list-content-warning"><small>File retention period must be greater than 0 (hours) otherwise, downloaded files will never be deleted and the disk may overflow!<br>If you run
+            this API locally, this is fine, otherwise set the environment variable <code>FILE_RETENTION_H</code> to the correct value</small></div>
+        <div class="files-list__content" id="files-list-content">
+            <p class="files-list__empty">No files yet</p>
+        </div>
+    </section>
+</main>
+
+<script src="/static/ui.js"></script>
+</body>
+</html>
