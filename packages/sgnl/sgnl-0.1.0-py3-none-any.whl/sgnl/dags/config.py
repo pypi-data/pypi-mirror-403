@@ -1,0 +1,239 @@
+# Copyright (C) 2024  Cort Posnansky (cort.posnansky@ligo.org)
+
+
+import getpass
+import pathlib
+
+import yaml
+from igwn_ligolw import utils as ligolw_utils
+from igwn_ligolw.utils import segments as ligolw_segments
+from igwn_segments import segment, segmentlist, segmentlistdict
+
+from sgnl.dags import segments
+from sgnl.dags.util import (
+    DotDict,
+    recursive_update,
+    replace_hyphens,
+    to_ifo_combos,
+    to_ifo_list,
+)
+
+
+def build_config(config_path, dag_dir, force_segments=False):
+    # Load default config
+    path_to_dags = pathlib.Path(__file__).parent
+    default_config_file = path_to_dags / "default_config.yml"
+    with open(default_config_file.as_posix(), "r") as file:
+        default_config_yaml = yaml.safe_load(file)
+
+    # Handle empty default config
+    if default_config_yaml is None:
+        default_config_yaml = {}
+
+    default_config = replace_hyphens(default_config_yaml)
+
+    # Load input config
+    with open(config_path, "r") as file:
+        config_in = replace_hyphens(yaml.safe_load(file))
+
+    # Ensure presence of options required by all dags
+    config_in = DotDict(config_in)
+    assert config_in.condor, "The config is missing the condor section"
+    assert (
+        config_in.condor.accounting_group
+    ), "The condor section of the config must specify an accounting-group"
+
+    # FIXME uncomment once we have a container
+    # assert (
+    #     config_in.condor.container
+    # ), "The condor section of the config must specify a container"
+
+    # Overwrite default config values with those from the input config
+    config = DotDict(recursive_update(default_config, config_in))
+
+    # Set a few more config options derived from inputs
+    if config.start:
+        config.span = segment(config.start, config.stop)
+    else:
+        config.span = segment(0, 0)
+
+    config.ifo_list = to_ifo_list(config.instruments)
+    config.ifos = config.ifo_list
+    config.ifo_combos = to_ifo_combos(config.ifo_list)
+    config.all_ifos = frozenset(config.ifos)
+    if not config.min_instruments_segments:
+        config.min_instruments_segments = 1
+
+    if config.start:
+        config = create_segments(config, force_segments=force_segments)
+
+    if not config.paths:
+        config.paths = DotDict({})
+    if not config.paths.storage:
+        config.paths.storage = dag_dir
+    if not config.condor.accounting_group_user:
+        config.condor.accounting_group_user = getpass.getuser()
+
+    return config
+
+
+def create_segments(config, force_segments=False):
+    # Load segments and create time bins.
+    # check for segments file, create one if it doesn't exist
+    # OR create one even if it exists but force_segments has been passed
+    segfile = pathlib.Path(config.source.frame_segments_file)
+
+    if config.source and segfile.exists() and not force_segments:
+
+        print(f"Loading segments from {segfile}")
+        xmldoc = ligolw_utils.load_filename(
+            segfile,
+            contenthandler=ligolw_segments.LIGOLWContentHandler,
+        )
+        config.segments = ligolw_segments.segmenttable_get_by_name(
+            xmldoc, "datasegments"
+        ).coalesce()
+
+    else:
+        if config.source.flags is not None:
+            flags = {
+                ifo: f"{ifo}:{flag}"
+                for ifo, flag in config.source.flags.items()
+                if flag is not None
+            }
+        else:
+            flags = {}
+
+        # check for conflict between use-gwosc-segments and provided flags
+        has_flags = any(flag is not None for flag in flags.values())
+        use_gwosc = config.source.use_gwosc_segments
+
+        if use_gwosc and has_flags:
+            raise ValueError(
+                "Config sets 'use-gwosc-segments: True' but also provides 'flags'. "
+                "Flags are only used for DQSegDB queries; remove the 'flags' "
+                "section when using GWOSC segments."
+            )
+
+        print(f"Creating segments.xml.gz over interval {config.start} .. {config.stop}")
+
+        if use_gwosc:
+            # query gwosc segments
+            print("Querying GWOSC segments")
+            segdict = segments.query_gwosc_segments(
+                config.instruments,
+                config.start,
+                config.stop,
+                verify_certs=True,
+            )
+
+        else:
+            # query dqsegdb segments
+            print(f"Querying DQSEGDB segments with flags {flags}")
+            segdict = segments.query_dqsegdb_segments(
+                config.instruments,
+                config.start,
+                config.stop,
+                flags,
+            )
+
+        # apply CAT1 vetoes if file is specified and exists
+        segdict = apply_cat1_vetoes(segdict, config)
+
+        # write to disk
+        segments.write_segments(segdict, config.source.frame_segments_file)
+
+        sdict = segmentlistdict()
+        for ifo, segs in segdict.items():
+            if not isinstance(segs, segmentlist):
+                segs = segmentlist(segs)
+            sdict[ifo] = segs.coalesce()
+
+        config.segments = sdict
+
+    if config.span != segment(0, 0):
+        config = create_time_bins(
+            config, start_pad=512, min_instruments=config.min_instruments_segments
+        )
+
+    return config
+
+
+def apply_cat1_vetoes(segdict, config):
+    """Apply CAT1 vetoes to segments if a vetoes file is specified.
+
+    If config.source.cat1_vetoes_file is set and the file exists,
+    load the veto segments and subtract them from the science segments.
+
+    Args:
+        segdict: The science segments (segmentlistdict).
+        config: The configuration object.
+
+    Returns:
+        segmentlistdict with CAT1 veto times removed.
+    """
+    vetoes_file = getattr(config.source, "cat1_vetoes_file", None)
+
+    if vetoes_file is None:
+        return segdict
+
+    vetoes_path = pathlib.Path(vetoes_file)
+    if not vetoes_path.exists():
+        raise FileNotFoundError(
+            f"CAT1 vetoes file specified but not found: {vetoes_file}"
+        )
+
+    print(f"Applying CAT1 vetoes from {vetoes_file}")
+    vetoes = segments.load_segment_file(vetoes_file)
+
+    # compute livetime before vetoes
+    total_before = sum(float(abs(segs)) for segs in segdict.values())
+
+    # apply diff: science - vetoes
+    result = segments.diff_segmentlistdicts(segdict, vetoes)
+
+    # compute livetime after vetoes
+    total_after = sum(float(abs(segs)) for segs in result.values())
+    removed = total_before - total_after
+
+    print(f"CAT1 vetoes removed {removed:.1f}s of livetime")
+    print(f"Before: {total_before:.1f}s, After: {total_after:.1f}s")
+
+    return result
+
+
+def create_time_bins(
+    config,
+    start_pad=512,
+    overlap=512,
+    min_instruments=1,
+    one_ifo_only=False,
+    one_ifo_length=(3600 * 8),
+):
+    config.time_boundaries = segments.split_segments_by_lock(
+        config.ifos, config.segments, config.span
+    )
+    config.time_bins = segmentlistdict()
+    if not one_ifo_only:
+        for span in config.time_boundaries:
+            analysis_segs = segments.analysis_segments(
+                config.ifos,
+                config.segments,
+                span,
+                start_pad=start_pad,
+                overlap=overlap,
+                min_instruments=min_instruments,
+                one_ifo_length=one_ifo_length,
+            )
+            config.time_bins.extend(analysis_segs)
+    else:
+        for span in config.time_boundaries:
+            time_bin = segmentlistdict()
+            for ifo, segs in config.segments.items():
+                ifo_key = frozenset([ifo])
+                segs = segs & segmentlist([span])
+                time_bin[ifo_key] = segments.split_segments(
+                    segs, one_ifo_length, start_pad
+                )
+            config.time_bins.extend(time_bin)
+    return config
