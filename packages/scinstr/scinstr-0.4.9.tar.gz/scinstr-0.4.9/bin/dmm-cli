@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""package scinstr
+author    Benoit Dubois
+copyright FEMTO ENGINEERING, 2018
+license   GPL v3.0+
+brief     A basic script acquiring the Tektronix DMM4050 digital multimeter.
+"""
+
+import logging
+from time import sleep
+from datetime import datetime
+from PyQt4.QtCore import QObject, pyqtSlot, QTimer, QThread
+
+from utilsben.mjdutils import datetime_to_mjd
+
+        
+#==============================================================================
+def check_dmm_eth():
+    """Checks DmmVdcTalker class, specificaly checks that signal/slot
+    mechanism work: data emited by instance are collected then printed to
+    standard output.
+    """
+    import sys
+    from PyQt4.QtCore import QCoreApplication
+    from dmm.dmm import DmmEth
+
+    def print_data(data):
+        """'Virtual slot', used to print data emited by a signal. Adds also a
+        timetag.
+        """
+        #now = datetime_to_mjd(datetime.utcnow())
+        now = datetime.utcnow()
+        print now, data
+
+    app = QCoreApplication(sys.argv)
+    dmm = DmmEth(interval=1000)
+    dmm.write("ZERO:AUTO OFF\n")
+    dmm.write("VOLT:DC:NPLC 10") # Integration time
+    dmm.write("CONF:VOLT:DC DEF") # Autorange
+    dmm.write("ZERO:AUTO OFF") # Autozero off
+    dmm.write("TRIG:SOUR IMM") # Immediate trigger source
+    dmm.write("TRIG:DEL 0")   # No trigger delay
+    dmm.write("TRIG:COUN 1")  # 1 measurement per trigger
+    dmm.write("SAMP:COUN 1")  # 1 sample per trigger
+    dmm.newData[str].connect(print_data)
+    dmm.start()
+    sys.exit(app.exec_())
+
+
+#==============================================================================
+if __name__ == '__main__':
+    import signal
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+    date_fmt = "%d/%m/%Y %H:%M:%S"
+    log_format = "%(asctime)s %(levelname) -8s %(filename)s " + \
+                 " %(funcName)s (%(lineno)d): %(message)s"
+    logging.basicConfig(level=logging.INFO, \
+                        datefmt=date_fmt, \
+                        format=log_format)
+
+    check_dmm_eth()

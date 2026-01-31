@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""lakeshore
+author    Benoit Dubois
+copyright FEMTO ENGINEERING, 2018
+license   GPL v3.0+
+brief     Load calibration file (.340 file only) to Lakeshore device.
+"""
+
+import signal
+import logging
+import argparse
+
+import lakeshore.l350 as l350
+
+# For "Ctrl+C" works
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+def parse_cli():
+    """Parse CLI parameters.
+    :returns: populated namespace (parser)
+    """
+    parser = argparse.ArgumentParser(
+        description='Load calibration file (.340 file only) to ' \
+        'a given index in Lakeshore device.',
+        epilog='Example: \'load340file 192.168.0.113 21 X123456.340\' ' \
+        'load X123456.340 calibration file at index number 21 ' \
+        'to device with IP 192.168.0.113')
+    parser.add_argument('ip', type=str,
+                        help='IP address of GPIB-ethernet controller')
+    parser.add_argument('index', type=int,
+                        help='Index of calibration file')
+    parser.add_argument('name', type=str,
+                        help='Name of calibration file')
+    args_ = parser.parse_args()
+    return args_
+
+
+def parse_340_file(file_name):
+    """Etract header and data from a 340 calibration file.
+    :param file_name: filename of calibration file (str)
+    :returns: extracted header and data (dict, array)
+    """
+    with open(file_name) as fd:
+        model = fd.readline().split()[2]
+        sn = fd.readline().split()[2]
+        format_ = int(fd.readline().split()[2])
+        spl = float(fd.readline().split()[2])
+        tc = int(fd.readline().split()[2])
+        nb_bkp = int(fd.readline().split()[3])
+    header = {'model':model, 'sn':sn, 'format':format_, 'spl':spl, 'tc':tc,
+              'nb_bkp':nb_bkp}
+
+    with open(file_name) as fd:
+        data_raw = fd.readlines()
+    a_nb = []
+    a_unit = []
+    a_temp = []
+    for line in data_raw[9:]:
+        nb, unit, temp = line.split(None, 3)
+        a_nb.append(int(nb))
+        a_unit.append(float(unit))
+        a_temp.append(float(temp))
+    data = [a_nb, a_unit, a_temp]
+
+    return header, data
+
+
+def load_340_file(dev, file_idx, header, data):
+    """Load a 340 calibration file to device. User calibration files are
+    stored in the device with a specified number index (from 21 to 59 in
+    Lakeshore 350 for example). This index is used to select calibration
+    data for sensors in use.
+    :param dev: Lakeshore device (object)
+    :param file_idx: index of calibration file (int)
+    :param header: header of calibration file (dict)
+    :param data: data of calibration file (array)
+    :returns: None
+    """
+    dev.write("CRVDEL {:2d}\n".format(file_idx))
+    dev.write("CRVHDR {:2d},{},{},{:1d},{:.3f},{:1d}\n".format(file_idx,
+                                                               header['model'],
+                                                               header['sn'],
+                                                               header['format'],
+                                                               header['spl'],
+                                                               header['tc']))
+    logging.info("loading header OK")
+    
+    for i in range(header['nb_bkp']):
+        dev.write("CRVPT {:2d},{:.0f},{:6g},{:6g};*OPC?\n".format(file_idx,
+                                                                  data[0][i],
+                                                                  data[1][i],
+                                                                  data[2][i]))
+        wd = 0
+        while dev.read(10).strip() != '1':
+            if wd > 10:
+                logging.error("Lakeshore is not responding")
+                return
+            wd += 1
+        logging.info("load data line %d", i)
+
+
+def main():
+    """Script main entry.
+    """
+    date_fmt = "%d/%m/%Y %H:%M:%S"
+    log_format = "%(asctime)s %(levelname) -8s %(filename)s " + \
+                 " %(funcName)s (%(lineno)d): %(message)s"
+    logging.basicConfig(level=logging.INFO, \
+                        datefmt=date_fmt, \
+                        format=log_format)
+
+    args = parse_cli()
+    ip = args.ip
+    fidx = int(args.index)
+    fname = args.name
+
+    dev = l350.L350()
+    dev.connect(ip, timeout=5.0)
+
+    logging.info("Load file %s @ index %d", fname, fidx)
+    header, data = parse_340_file(fname)
+    load_340_file(dev, fidx, header, data)
+    logging.info("-----> OK")
+
+    dev.close()
+
+
+main()

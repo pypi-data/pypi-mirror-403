@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""lakeshore
+author    Benoit Dubois
+copyright FEMTO ENGINEERING, 2019
+license   GPL v3.0+
+brief     Generate "340" calibration file for Lakeshore device.
+          from a simple two columns (unit, temperature) file.
+"""
+
+import argparse
+import numpy as np
+import matplotlib.pyplot as plt
+
+HEADER = "Sensor Model:   {}\n\
+Serial Number:  {}\n\
+Data Format:    4      (Log Ohms/Kelvin)\n\
+SetPoint Limit: {:+.3f}      (Kelvin)\n\
+Temperature coefficient:  1 (Negative)\n\
+Number of Breakpoints:   {:d}\n\
+\n\
+No.   Units  Temperature (K)\n\
+"
+
+
+def parse_cli():
+    """Parse CLI parameters.
+    :returns: populated namespace (parser)
+    """
+    parser = argparse.ArgumentParser(
+        description='Generate "340" calibration file for Lakeshore device.',
+        epilog='Example: \'gen340file ifile_name CX-1050-BO X123456 ' \
+        '--range 12.5 80 --degree 9 6 7 --break 49 49 50 \' ' \
+        'generate a calibration file \'X123456.340\' with fits of degree ' \
+        '9, 6 and 9 for, respectively,  temperature < 12.5K, tempeature ' \
+        'between 12.5K and 80K and temperature over 80K')
+
+    parser.add_argument('ifile', type=str,
+                        help='Input file with (raw) calibrated data')
+    parser.add_argument('model', type=str,
+                        help='Model of sensor (ex: CX-1050-BO)')
+    parser.add_argument('sn', type=str,
+                        help='Serial number of sensor (ex: X123456)')
+
+    parser.add_argument('-g', action='store', dest='gdisplay', nargs='?', \
+                        const='classic', choices=['classic', 'xkcb'], type=bool,\
+                        help='Enable graphical data display (default=disable)')
+
+    args_ = parser.parse_args()
+    return args_
+
+    
+def get_data_range(data, _min=None, _max=None):
+    """Filter data that are not in the given range [_min:_max].
+    :param data: data to process (array)
+    :param _min: minimum range value (float)
+    :param _max: maximum range value (float)
+    :returns: data filtered (array)
+    """
+    if _min is None and _max is None:
+        return data
+    elif _min is None:
+        return data[np.where(data[:,1] < _max)]
+    elif _max is None:
+        return data[np.where(_min < data[:,1])]
+    else:
+        data = data[np.where(_min <= data[:,1])]
+        data = data[np.where(data[:,1] <= _max)]
+        return data
+
+
+def sort_data(data):
+    """Take array of 'x' and 'y' of data (shape: (2,-1)) and sort data
+    with respect to the first column.
+    :param data: data to sort (array)
+    :returns: data sortered (array)
+    """
+    xys = data[data[:,0].argsort()]
+    return xys
+
+
+def main():
+    """Script main entry.
+    """
+
+    args = parse_cli()
+    ifile = args.ifile
+    model = args.model
+    sn = args.sn
+    plot = args.gdisplay
+
+    data = np.genfromtxt(ifile) #, delimiter=' ').T
+
+    print("TOTO",np.shape(data))
+    
+    #xy = np.stack((data[sensor,:], data[5,:]), axis=-1)
+    #xys = sort_data(xy)
+
+    unit = data[:,0]
+    temp = data[:,1]
+    id_ = np.arange(1, len(unit)+1)
+    data_cal = np.stack((id_, unit, temp), axis=-1)
+
+    np.savetxt("{}.340".format(sn),
+               data_cal,
+               fmt='%3u %8.5f %13.3f',
+               header=HEADER.format(model,
+                                    sn,
+                                    int(max(data_cal[:,2])),
+                                    len(data_cal)),
+               comments='')
+
+    if plot is True:
+        plt.figure()
+        plt.plot(unit, temp, '-')
+        plt.show()
+
+
+main()

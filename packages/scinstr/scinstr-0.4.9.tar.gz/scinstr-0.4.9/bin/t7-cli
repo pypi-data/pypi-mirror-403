@@ -1,0 +1,85 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+
+"""package labjack
+author    Benoit Dubois (2018)
+copyright FEMTO Engineering
+licence   GPL 3.0+
+brief     Basic CLI for T7(-Pro) device.
+"""
+
+import signal
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+import time
+from os.path import expanduser
+import logging
+
+import labjack.t7.t7eth as t7
+
+
+I0 = 200e-6
+
+#==============================================================================
+def pt100_v2t(volt, i0=I0):
+    """Temperature from voltage of a Pt100 sensor.
+    """
+    r0 = 100
+    alpha = 0.00385
+    k = 1 / alpha / r0
+    resistance = voltage / i0
+    return k * (resistance - r0)
+
+
+#==============================================================================
+def main(ip, ofile, ains):
+    
+    dev = t7.T7Eth(ip)
+    dev.connect()
+
+    with open(ofile, "a") as fd:
+        while True:
+            v_raw = T7.get_ains_voltage(ains)
+            v_str = ''
+            for v in v_raw:
+                v_str += str(v) + ';'
+            print(V_STR)
+
+            # V0 = V_RAW[1]-V_RAW[0]
+            # V1 = v_list[2]-v_list[3]
+            # T0 = pt100_v2t(V0)
+            # T1 = pt100_v2t(V1)
+            # print(V0, V1, T0, T1)
+            fd.write(V_STR + '\n')
+            fd.flush()
+            time.sleep(1.0)
+
+    dev.close()
+
+
+# =============================================================================
+if __name__ == "__main__":
+    # For "Ctrl+C" works
+    import signal
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+    # Setup logger
+    LOG_FORMAT = '%(asctime)s %(levelname)s %(filename)s (%(lineno)d): ' \
+                 + '%(message)s'
+    logging.basicConfig(format=LOG_FORMAT, level=logging.INFO)
+
+    PARSER = argparse.ArgumentParser(description='T7(-Pro) cli')
+    PARSER.add_argument('ip', dest='ip', help='IP to connect to')
+    PARSER.add_argument('ofile', dest='ofile', help='Output file to write to')
+    PARSER.add_argument('ains', metavar='ains', type=int, nargs='+',
+                        help='Analog input numbers to acquire')
+    PARSER.add_argument('-p', metavar='period', type=int, default=1,
+                        help='acquisition rate in second (default=1s)')
+    ARGS = PARSER.parse_args()
+
+    IP = ARGS.ip
+    OFILE = ARGS.ofile
+    AINS = ARGS.ains
+    PERIOD = ARGS.period
+
+    main(IP, OFILE, AINS, PERIOD)

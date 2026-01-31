@@ -1,0 +1,27 @@
+# -*- coding: utf-8 -*-
+
+# Default Tektronix DMM 4050 parameters
+DMM4050_ID = "TEKTRONIX,DMM4050"
+DMM4050_PORT = 3490
+DMM4050_TIMEOUT = 3.0
+
+# Default Keysight DMM 3446(0|1)A parameters
+DMM34461A_ID = "Technologies,3446"
+DMM34461A_PORT = 5025
+DMM34461A_TIMEOUT = 3.0
+DMM34461A_VID = 0x2a8d
+DMM34461A_PID = 0x1601
+
+# Default Siglent SDM3065X parameters
+SDM3065X_ID = "Siglent Technologies,SDM30"
+SDM3065X_PORT = 5025
+SDM3065X_TIMEOUT = 3.0
+SDM3065X_VID = 0xf4ec
+SDM3065X_PID = 0xee38
+
+# Default Siglent SDM3055 parameters
+SDM3055_ID = "Siglent Technologies,SDM30"
+SDM3055_PORT = 5025
+SDM3055_TIMEOUT = 3.0
+SDM3055_VID = 0xf4ec
+SDM3055_PID = 0x1201

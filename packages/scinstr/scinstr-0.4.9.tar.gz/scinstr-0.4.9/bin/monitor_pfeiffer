@@ -1,0 +1,53 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+
+"""package vacuum
+author  Benoit Dubois
+brief   A basic monitoring program for Pfeiffer vacuum gauge.
+details Return pressure from Pfeiffer vacuum gauge with a definable sampling
+        period (minimum = 1 s).
+"""
+# Ctrl-c closes the application
+#import signal
+#signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+import argparse
+import time
+from datetime import datetime
+import sys
+import visa
+
+import utilsben.mjdutils as mjd
+import lantz.drivers.pfeiffer.tpg261 as tpg261
+
+_resource_manager = visa.ResourceManager('@py')
+
+
+DEFAULT_FILENAME = datetime.strftime(datetime.utcnow(), "%Y%m%d-%H%M%S") + "_pressure.dat" 
+
+parser = argparse.ArgumentParser(description='Pfeiffer TPG261 Monitoring')
+parser.add_argument('-p', '--period', dest='period', type=float,
+                    default=30.0, help='--period <float> [s] (min 1.0)')
+parser.add_argument('-t', '--port', dest='port', type=int,
+                    default=DEFAULT_SERIAL_PORT, help='--port <int>')
+parser.add_argument('-o', '--output', dest='_file', type=str,
+                    default=DEFAULT_FILENAME, help='--output <filename> ')
+
+args = parser.parse_args()
+period = args.period
+port = args.port
+_file = args._file
+
+with tpg261.Tpg261('ASRL/dev/ttyS{:d}::INSTR'.format(port)) as inst, open(_file, 'a') as fd:
+    try:
+        while True:
+            timetag = mjd.datetime_to_mjd(datetime.utcnow())
+            pressure = inst.pressure[1]
+            print("{:.12f}\t{}".format(timetag, pressure))
+            fd.write("{:.12f}\t{}\n".format(timetag, pressure))
+            fd.flush()
+            time.sleep(period)
+    except KeyboardInterrupt:
+        fd.flush()
+        sys.exit()
+

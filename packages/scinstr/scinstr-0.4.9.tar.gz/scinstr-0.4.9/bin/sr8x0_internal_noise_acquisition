@@ -1,0 +1,71 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+
+"""package stanford
+author    Benoit Dubois
+copyright FEMTO ENGINEERING
+license   GPL v3.0+
+brief     A basic program to acquire data from SR810 LockIn amplifier and
+          plotting the corresponding power spectrum.
+"""
+
+from sr810 import Sr810
+import numpy as np
+import scipy.signal as scs
+from pyqtgraph.Qt import QtCore, QtGui
+import pyqtgraph as pg
+import pyqtgraph.exporters
+import time
+
+
+SR810_IP = "192.168.0.54"
+
+BASE_FILENAME = "sr810_10ternal_noise"
+SAMPLING_PERIOD = 0.016
+
+SENSITIVITY = "5 uV/pA"
+TIME_CONSTANT = ("30 s", "10 s", "1 s", "100 ms", "10 ms", "1 ms", "100 us", "10 us")
+
+
+def gen_powspec(filename, fs):
+    try:
+        rawdata = np.loadtxt(filename + ".dat")
+        data = rawdata[:,1] # real
+        N = len(data)
+        f, psd = scs.periodogram(data, fs)
+        np.savetxt(filename + ".psd", np.transpose([f, psd]),
+                   delimiter='\t', header="f\tPSD (dBV^2/Hz)")
+        plt = pg.plot(x=f, y=10*np.log10(psd), pen='r',
+                      title="Estimate PSD (dBV^2/Hz)")
+        plt.setLogMode(x=True)
+        plt.showGrid(x=True, y=True)
+        plt.setXRange(np.log10(f[1]), np.log10(f[-1]))
+        plt.setYRange(10*np.log10(min(psd[1:])), 10*np.log10(max(psd[1:])))
+        exporter = pg.exporters.ImageExporter(plt.plotItem)
+        exporter.export(filename + ".png")
+    except Exception as ex:
+        print(ex)
+
+
+with Sr810('TCPIP::' + SR810_IP + '::1234::SOCKET') as lockin:
+
+    lockin.sensitivity = SENSITIVITY    
+
+    for tc in TIME_CONSTANT:
+        lockin.time_constants = tc
+        filename = BASE_FILENAME + '_' + str(SAMPLING_PERIOD) + '_' \
+                   + tc.replace(' ', '_')
+        tmax = 10000 / TIME_CONSTANT
+        now = 0.0
+        
+        with open(filename + ".dat", 'w') as fd:
+            fd.write("# output voltage\n")
+            # Acquisition loop
+            while now < tmax:
+                data = lockin.measure(['r', 't', 'x', 'y'])
+                for item in data: fd.write(str(item) + '\n')
+                #fd.flush()
+                time.sleep(SAMPLING_PERIOD)
+                now += 1
+        print("\n" + filename)
+        gen_powspec(filename, 1/SAMPLING_PERIOD)

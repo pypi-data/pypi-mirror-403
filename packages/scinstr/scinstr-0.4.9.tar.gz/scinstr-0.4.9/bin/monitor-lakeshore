@@ -1,0 +1,105 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+
+"""package lakeshore
+author    Benoit Dubois
+copyright FEMTO ENGINEERING
+license   GPL v3.0+
+brief     A basic monitoring program Lakeshore temperature controler.
+details   Return temperature from Lakeshore temperature controler with
+          a tuningable sampling period (minimum = 1.0 s).
+"""
+
+import sys
+import logging
+import argparse
+import time
+import datetime as dt
+import configparser
+import math
+
+# Ctrl-c closes the application
+import signal
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+#import utilsben.mjdutils as mjd
+from lakeshore.l350 import L350Usb, PORT
+
+APP_NAME = "LakeshoreMonitor"
+DEFAULT_SAMP_PERIOD = 30.0 # Sampling period of monitored data (in s)
+
+
+#==============================================================================
+def parse_cmd_line():
+    """Parses command line.
+    :returns: an object holding attributes (Namespace)
+    """
+    parser = argparse.ArgumentParser(description='Lakeshore Monitoring')
+    parser.add_argument('interface', choices=['ethernet', 'usb'], type=str)
+    parser.add_argument('--ip', dest='ip', type=str,
+                        help='If interface = \'ethernet\', IP of device')
+    parser.add_argument('--port', dest='port', type=str,
+                        help='If interface = \'usb\', serial port')
+    parser.add_argument('-p', '--period', dest='period', type=float,
+                        default=DEFAULT_SAMP_PERIOD, help='--period=<float>')
+    return parser.parse_args()
+
+
+#==============================================================================
+# simple_test() function
+#==============================================================================
+def simple_test():
+    """Basic test: request continously temperature value of each input.
+    """
+    # Parse command line
+    args = parse_cmd_line()
+    interface = args.interface
+    ip = args.ip
+    port = args.port
+    period = args.period
+
+    if interface == 'ethernet':
+        dev = L350Eth(ip=ip, timeout=1.0)
+    else:
+        dev = L350Usb(port=port)
+
+    dev.connect()
+
+    while True:
+        retval = dev.ask("KRDG? 0")
+        #now = mjd.datetime_to_mjd(dt.datetime.utcnow())
+        now = dt.datetime.utcnow()
+        print(str(now) + '\t' + retval.replace(',', '\t'))
+        time.sleep(period)
+
+    dev.close()
+    exit()
+
+
+#==============================================================================
+def configure_logging():
+    """Configures logs.
+    """
+    date_fmt = "%d/%m/%Y %H:%M:%S"
+    log_format = "%(asctime)s %(levelname) -8s %(filename)s " + \
+                 " %(funcName)s (%(lineno)d): %(message)s"
+    logging.basicConfig(level=logging.INFO, \
+                        datefmt=date_fmt, \
+                        format=log_format, \
+                        #filename=DEF_APP_PATH+APP_NAME+".log" , \
+                        filemode='w')
+    console = logging.StreamHandler()
+    # define a Handler which writes INFO messages or higher to the sys.stderr
+    console.setLevel(logging.DEBUG)
+    # set a format which is simpler for console use
+    formatter = logging.Formatter('%(levelname)s: %(message)s')
+    # tell the handler to use this format
+    console.setFormatter(formatter)
+    # add the handler to the root logger
+    logging.getLogger('').addHandler(console)
+
+
+#==============================================================================
+if __name__ == "__main__":
+    configure_logging()
+    simple_test()

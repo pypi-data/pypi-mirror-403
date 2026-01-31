@@ -1,0 +1,56 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+
+"""package vacuum
+author    Benoit Dubois
+copyright FEMTO ENGINEERING
+license   GPL v3.0+
+brief     A basic monitoring program for vacuum gauge.
+details   Return pressure from vacuum gauge through RS232 interface
+          with a definable sampling period (minimum = 1 s).
+          Work with Pfeiffer TPG261 and Center One gauge controller.
+"""
+# Ctrl-c closes the application
+import signal
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+import sys
+import argparse
+import time
+from datetime import datetime
+import vacuum.tpg261 as gauge
+
+
+DEFAULT_SERIAL_PORT = 0
+DEFAULT_FILENAME = datetime.strftime(datetime.utcnow(), "%Y%m%d-%H%M%S") + "-pressure.dat"
+
+parser = argparse.ArgumentParser(description=' Monitoring')
+parser.add_argument('-p', '--period', dest='period', type=float,
+                    default=30.0, help='--period <float> [s]')
+parser.add_argument('-s', '--serialport', dest='port', type=str,
+                    help='--serialport <str>')
+parser.add_argument('-o', '--output', dest='filename', type=str,
+                    default=DEFAULT_FILENAME, help='--output <filename> ')
+
+args = parser.parse_args()
+period = args.period
+port = args.port
+filename = args.filename
+
+dev = gauge.Tpg261(port=port)
+dev.connect()
+
+with open(filename, 'a') as fd:
+        try:
+                while True:
+			tic = time.time()
+			timetag = datetime.utcnow()
+			pressure = dev.pressure()
+			print("{:f}\t{:.12f}\t{}\n".format(time.time(), timetag, pressure))
+			fd.write("{:f}\t{:.12f}\t{}\n".format(time.time(), timetag, pressure))
+			fd.flush()
+			time.sleep(period - time.time() + tic)
+	except KeyboardInterrupt:
+		fd.flush()
+		sys.exit()
+

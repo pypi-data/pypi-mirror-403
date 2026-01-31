@@ -1,0 +1,78 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+
+"""package stanford
+author    Benoit Dubois
+copyright FEMTO ENGINEERING
+license   GPL v3.0+
+brief     A basic program to acquire data from SR810 LockIn amplifier and
+          plotting the corresponding power spectrum.
+"""
+
+from sr810 import Sr810
+import numpy as np
+import scipy.signal as scs
+from pyqtgraph.Qt import QtCore, QtGui
+import pyqtgraph as pg
+import pyqtgraph.exporters
+import time
+from t7pro import T7Pro
+
+
+SR810_IP = "192.168.0.54"
+T7_IP = "192.168.0.205"
+
+BASE_FILENAME = "sr810_external_noise"
+SAMPLING_PERIOD = 0.015625 # 64 Hz
+TMAX = 3600 # second
+
+SENSITIVITY = "5 uV/pA"
+TIME_CONSTANT = ("1 s", "10 ms", "1 ms", "100 us", "10 us")
+
+
+def gen_powspec(filename, fs):
+    try:
+        data = np.loadtxt(filename + ".dat")
+        N = len(data)
+        f, psd = scs.periodogram(data, fs)
+        np.savetxt(filename + ".psd", np.transpose([f, psd]),
+                   delimiter='\t', header="f\tPSD (dBV^2/Hz)")
+        plt = pg.plot(x=f, y=10*np.log10(psd), pen='r',
+                      title="Estimate PSD (dBV^2/Hz)")
+        plt.setLogMode(x=True)
+        plt.showGrid(x=True, y=True)
+        plt.setXRange(np.log10(f[1]), np.log10(f[-1]))
+        plt.setYRange(10*np.log10(min(psd[1:])), 10*np.log10(max(psd[1:])))
+        exporter = pg.exporters.ImageExporter(plt.plotItem)
+        exporter.export(filename + ".png")
+    except NameError as ex:
+        #except Exception as ex:
+        print(ex)
+
+
+with Sr810('TCPIP::' + SR810_IP + '::1234::SOCKET') as lockin, T7Pro(T7_IP) as daq:
+    lockin.sensitivity = SENSITIVITY
+    daq.analog_in_range[0] = "1.0 volt"
+    daq.analog_in_resolution[0] = "Default 9 (19 bits)"
+    daq.stream_init(["AIN0"], int(1/SAMPLING_PERIOD))
+    
+    for tc in TIME_CONSTANT:
+        lockin.time_constants = tc
+        filename = BASE_FILENAME + '_' + str(SAMPLING_PERIOD) + '_' \
+                   + tc.replace(' ', '_')
+        acq_max = TMAX*2 # Because streaming read is done @ 2 Hz
+        now = 0.0
+        
+        with open(filename + ".dat", 'w') as fd:
+            fd.write("# output voltage\n")
+            daq.stream_start(0)
+            # Acquisition loop
+            while now < acq_max:
+                curSkip, scans, data = daq.stream_read()
+                if curSkip != 0: print("Sample(s) skipped:", curSkip)
+                for item in data: fd.write(str(item) + '\n')
+                fd.flush()
+                now += 1
+        daq.stream_stop()
+        print("\n" + filename)
+        gen_powspec(filename, 1/SAMPLING_PERIOD)
