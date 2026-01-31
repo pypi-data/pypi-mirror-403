@@ -1,0 +1,181 @@
+Metadata-Version: 2.4
+Name: nitro-cli
+Version: 1.0.8
+Summary: Build static sites with Python code instead of template engines
+Author-email: Sean Nieuwoudt <sean@nitro.sh>
+Project-URL: Homepage, https://github.com/nitro-sh/nitro-cli
+Project-URL: Documentation, https://nitro-cli.readthedocs.io
+Project-URL: Repository, https://github.com/nitro-sh/nitro-cli
+Project-URL: Issues, https://github.com/nitro-sh/nitro-cli/issues
+Keywords: static-site-generator,cli,html,nitro,web,ssg
+Classifier: Operating System :: OS Independent
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: Topic :: Software Development :: Build Tools
+Classifier: Topic :: Internet :: WWW/HTTP :: Site Management
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: click>=8.1.0
+Requires-Dist: watchdog>=4.0.0
+Requires-Dist: rich>=13.0.0
+Requires-Dist: pyyaml>=6.0.1
+Requires-Dist: aiohttp>=3.9.0
+Requires-Dist: aiofiles>=23.0.0
+Requires-Dist: csscompressor>=0.9.5
+Requires-Dist: minify-html>=0.15.0
+Requires-Dist: pillow>=10.0.0
+Requires-Dist: nitro-ui>=1.0.6
+Requires-Dist: nitro-datastore>=1.0.2
+Requires-Dist: nitro-dispatch>=1.0.0
+Requires-Dist: beautifulsoup4>=4.12.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+Requires-Dist: html5lib>=1.1; extra == "dev"
+Requires-Dist: black>=24.0.0; extra == "dev"
+Requires-Dist: flake8>=7.0.0; extra == "dev"
+Provides-Extra: markdown
+Requires-Dist: python-frontmatter>=1.1.0; extra == "markdown"
+Requires-Dist: markdown>=3.6.0; extra == "markdown"
+Provides-Extra: images
+Requires-Dist: pillow-avif-plugin>=1.3.0; extra == "images"
+Provides-Extra: dotenv
+Requires-Dist: python-dotenv>=1.0.0; extra == "dotenv"
+Dynamic: license-file
+
+# Nitro CLI
+
+A static site generator that lets you build websites using Python and [nitro-ui](https://github.com/nitrosh/nitro-ui).
+
+## Features
+
+- **Python-Powered** - Write pages in Python with nitro-ui instead of template languages
+- **Live Reload** - Development server with automatic browser refresh
+- **Incremental Builds** - Only rebuild changed pages
+- **Dynamic Routes** - Generate pages from data with `[slug].py` pattern
+- **Draft Pages** - Mark pages as drafts to exclude from production builds
+- **Environment Variables** - Auto-load `.env` files with `from nitro import env`
+- **Image Optimization** - Responsive images with WebP/AVIF conversion
+- **Islands Architecture** - Partial hydration for interactive components
+- **Plugin System** - Extend the build lifecycle with nitro-dispatch hooks
+- **One-Click Deploy** - Netlify, Vercel, or Cloudflare Pages
+
+## Installation
+
+```bash
+pip install nitro-cli
+```
+
+### AI Assistant Integration
+
+Add Nitro CLI knowledge to your AI coding assistant:
+
+```bash
+npx skills add nitrosh/nitro-cli
+```
+
+This enables AI assistants like Claude Code to understand Nitro CLI and generate correct nitro-ui code.
+
+## Quick Start
+
+```bash
+nitro new my-site
+cd my-site
+nitro dev
+```
+
+Visit <http://localhost:3000>. Build for production with `nitro build`.
+
+## Writing Pages
+
+Pages are Python files in `src/pages/` that export a `render()` function:
+
+```python
+# src/pages/index.py
+from nitro_ui import HTML, Head, Body, Title, Meta, H1
+from nitro import Page
+
+def render():
+    return Page(
+        title="Home",
+        content=HTML(
+            Head(
+                Meta(charset="UTF-8"),
+                Meta(name="viewport", content="width=device-width, initial-scale=1.0"),
+                Title("Home"),
+            ),
+            Body(H1("Welcome!"))
+        )
+    )
+```
+
+Output paths mirror the file structure: `src/pages/about.py` → `build/about.html`
+
+## Dynamic Routes
+
+Generate multiple pages from data using `[param].py` naming:
+
+```python
+# src/pages/blog/[slug].py
+from nitro import Page
+from nitro_datastore import NitroDataStore
+
+def get_paths():
+    data = NitroDataStore.from_file("src/data/posts.json")
+    return [{"slug": p.slug, "title": p.title} for p in data.posts]
+
+def render(slug, title):
+    return Page(title=title, content=...)
+```
+
+## Commands
+
+| Command            | Description                        |
+|--------------------|------------------------------------|
+| `nitro new <name>` | Create new project                 |
+| `nitro init`       | Initialize Nitro in current dir    |
+| `nitro dev`        | Start dev server with live reload  |
+| `nitro build`      | Build for production               |
+| `nitro preview`    | Preview production build           |
+| `nitro routes`     | List all routes                    |
+| `nitro check`      | Validate site without building     |
+| `nitro export`     | Export site as zip archive         |
+| `nitro clean`      | Remove build artifacts             |
+| `nitro deploy`     | Deploy to hosting platform         |
+| `nitro info`       | Show project and environment info  |
+
+Run `nitro <command> --help` for options.
+
+## Configuration
+
+```python
+# nitro.config.py
+from nitro import Config
+
+config = Config(
+    site_name="My Site",
+    base_url="https://mysite.com",
+    renderer={"minify_html": True},
+    plugins=[],
+)
+```
+
+## Ecosystem
+
+- **[nitro-ui](https://github.com/nitrosh/nitro-ui)** - Programmatic HTML generation
+- **[nitro-datastore](https://github.com/nitrosh/nitro-datastore)** - Data loading with dot notation access
+- **[nitro-dispatch](https://github.com/nitrosh/nitro-dispatch)** - Plugin system
+- **[nitro-validate](https://github.com/nitrosh/nitro-validate)** - Data validation
+
+## License
+
+This project is licensed under the BSD 3-Clause License. See the [LICENSE](LICENSE) file for details.
