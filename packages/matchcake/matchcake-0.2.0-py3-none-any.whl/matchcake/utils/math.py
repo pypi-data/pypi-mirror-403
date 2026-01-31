@@ -1,0 +1,502 @@
+from typing import Any, Iterable, List, Literal, Optional, Tuple
+
+import numpy as np
+import pennylane as qml
+
+from ..constants import (
+    _CIRCUIT_MATMUL_DIRECTION,
+    _FOP_MATMUL_DIRECTION,
+    MatmulDirectionType,
+)
+from ..typing import TensorLike
+
+
+def convert_and_cast_like(tensor1, tensor2):
+    r"""
+    Convert and cast the tensor1 to the same type as tensor2.
+
+    :param tensor1: Tensor to convert and cast.
+    :type tensor1: Any
+    :param tensor2: Tensor to use as a reference.
+    :type tensor2: Any
+
+    :return: Converted and casted tensor1.
+    """
+    import warnings
+
+    new_tensor1 = qml.math.convert_like(tensor1, tensor2)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore")
+        if not qml.math.any(qml.math.iscomplex(new_tensor1)):
+            new_tensor1 = qml.math.real(new_tensor1)
+        if (
+            "complex" in qml.math.get_dtype_name(new_tensor1).lower()
+            and not "complex" in qml.math.get_dtype_name(tensor2).lower()
+        ):
+            new_tensor1 = qml.math.real(new_tensor1)  # pragma: no cover
+        new_tensor1 = qml.math.cast_like(new_tensor1, tensor2)
+    return new_tensor1
+
+
+def convert_like_and_cast_to(tensor, like, dtype=None):
+    r"""
+    Convert and cast the tensor to the same type as the tensor like.
+
+    :param tensor: Tensor to convert and cast.
+    :type tensor: Any
+    :param like: Tensor to use as a reference.
+    :type like: Any
+    :param dtype: Data type to cast the tensor.
+    :type dtype: Any
+
+    :return: Converted and casted tensor.
+    """
+    new_tensor = qml.math.convert_like(tensor, like)
+    if dtype is not None:
+        new_tensor = qml.math.cast(new_tensor, dtype)
+    return new_tensor
+
+
+def eye_block_matrix(matrix: TensorLike, n: int, index: int):
+    r"""
+
+    Take a matrix and insert it into a bigger eye matrix like this:
+
+    .. math::
+
+        \begin{pmatrix}
+            I & 0 & 0 \\
+            0 & M & 0 \\
+            0 & 0 & I
+        \end{pmatrix}
+
+    where :math:`I` is the identity matrix and :math:`M` is the input matrix.
+
+    :param matrix:
+    :param n:
+    :param index:
+    :return:
+    """
+    eye = qml.math.eye(n - qml.math.shape(matrix)[0], like=matrix)
+    return qml.math.block_diag([eye[:index, :index], matrix, eye[index:, index:]])
+
+
+def convert_tensors_to_same_type_and_cast_to(
+    tensors: List[TensorLike],
+    cast_priorities: List[Literal["numpy", "autograd", "jax", "tf", "torch"]] = (
+        "numpy",
+        "autograd",
+        "jax",
+        "tf",
+        "torch",
+    ),
+    dtype=None,
+) -> List[TensorLike]:
+    r"""
+    Convert the tensors to the same type using the given priorities.
+
+    :param tensors: Tensors to convert and cast.
+    :type tensors: List[TensorLike]
+    :param cast_priorities: Priorities of the casting. Higher the index is, higher the priority.
+    :type cast_priorities: List[Literal["numpy", "autograd", "jax", "tf", "torch"]]
+
+    :return: Converted and casted tensors.
+    :rtype: List[TensorLike]
+    """
+    if len(tensors) == 0:
+        return []
+
+    tensors_priorities = [cast_priorities.index(qml.math.get_interface(tensor)) for tensor in tensors]
+    highest_priority = max(tensors_priorities)
+    if all(priority == highest_priority for priority in tensors_priorities):
+        return tensors
+    like = tensors[tensors_priorities.index(highest_priority)]
+    return [convert_like_and_cast_to(tensor, like, dtype) for tensor in tensors]
+
+
+def convert_tensors_to_same_type(
+    tensors: List[TensorLike],
+    cast_priorities: List[Literal["numpy", "autograd", "jax", "tf", "torch"]] = (
+        "numpy",
+        "autograd",
+        "jax",
+        "tf",
+        "torch",
+    ),
+) -> List[TensorLike]:
+    r"""
+    Convert the tensors to the same type using the given priorities.
+
+    :param tensors: Tensors to convert and cast.
+    :type tensors: List[TensorLike]
+    :param cast_priorities: Priorities of the casting. Higher the index is, higher the priority.
+    :type cast_priorities: List[Literal["numpy", "autograd", "jax", "tf", "torch"]]
+
+    :return: Converted and casted tensors.
+    :rtype: List[TensorLike]
+    """
+    if len(tensors) == 0:
+        return []
+
+    tensors_priorities = [cast_priorities.index(qml.math.get_interface(tensor)) for tensor in tensors]
+    highest_priority = max(tensors_priorities)
+    if all(priority == highest_priority for priority in tensors_priorities):
+        return tensors  # pragma: no cover
+    like = tensors[tensors_priorities.index(highest_priority)]
+    return [qml.math.convert_like(tensor, like) for tensor in tensors]
+
+
+def convert_and_cast_tensor_from_tensors(
+    tensor: TensorLike,
+    tensors: List[TensorLike],
+    cast_priorities: List[Literal["numpy", "autograd", "jax", "tf", "torch"]] = (
+        "numpy",
+        "autograd",
+        "jax",
+        "tf",
+        "torch",
+    ),
+) -> TensorLike:
+    r"""
+    Convert and cast the tensor to the same type as the tensors using the given priorities.
+
+    :param tensor: Tensor to convert and cast.
+    :type tensor: TensorLike
+    :param tensors: Tensors to use as a reference.
+    :type tensors: List[TensorLike]
+    :param cast_priorities: Priorities of the casting. Higher the index is, higher the priority.
+    :type cast_priorities: List[Literal["numpy", "autograd", "jax", "tf", "torch"]]
+
+    :return: Converted and casted tensor.
+    :rtype: TensorLike
+    """
+    if len(tensors) == 0:
+        return tensor
+
+    tensor_priority = cast_priorities.index(qml.math.get_interface(tensor))
+    tensors_priorities = [cast_priorities.index(qml.math.get_interface(tensor)) for tensor in tensors]
+    highest_priority = max(tensors_priorities)
+    if tensor_priority == highest_priority:
+        return tensor  # pragma: no cover
+    # like is the first tensor with the highest priority
+    like = tensors[tensors_priorities.index(highest_priority)]
+    return convert_and_cast_like(tensor, like)
+
+
+def exp_taylor_series(x: Any, terms: int = 18) -> Any:
+    r"""
+    Compute the matrix exponential using the Taylor series.
+
+    :param x: input of the exponential.
+    :type x: Any
+    :param terms: Number of terms in the Taylor series.
+    :type terms: int
+
+    :return: The exponential of the input.
+    :rtype: Any
+    """
+    results = [1]
+    for i in range(1, terms + 1):
+        results.append(results[-1] * x / i)
+    return sum(results)
+
+
+def random_index(
+    probs,
+    n: Optional[int] = None,
+    axis=-1,
+    normalize_probs: bool = True,
+    eps: float = 1e-12,
+):
+    """
+    Generates random indices based on provided probabilities along a specified axis.
+
+    This function selects random indices according to the given probability
+    distribution. If the probabilities are not normalized to sum to 1,
+    they can be optionally normalized before use. It supports generating
+    a specified number of random indices, either as a scalar value or as
+    an array of indices, depending on the input parameters.
+
+    :param probs: An array of probabilities along any given dimension. This
+        array is expected to be non-negative, and its entries are used as
+        weights to compute the likelihood of selecting corresponding indices.
+    :param n: Optional integer specifying the number of random indices to
+        generate for each vector in `probs`. If not provided, defaults to 1.
+    :param axis: Integer representing the axis of the `probs` array along
+        which the random indices are generated. Defaults to -1 (last axis).
+    :param normalize_probs: Boolean indicating whether to normalize `probs`
+        along the specified axis to ensure that the entries sum to 1.
+        Defaults to True.
+    :param eps: A small float value added to the denominator during
+        normalization to prevent division by zero. Defaults to 1e-12.
+    :return: A scalar or an array of randomly selected indices based on the
+        probabilities provided.
+    """
+    _n = n or 1
+    axis = np.mod(axis, probs.ndim)
+    if normalize_probs:
+        probs = probs / (probs.sum(axis=axis, keepdims=True) + eps)
+
+    shape_wo_axis = list(probs.shape)
+    shape_wo_axis.pop(axis)
+    shape_wo_axis = [_n] + shape_wo_axis
+    r = np.expand_dims(np.random.rand(*shape_wo_axis), axis=1 + axis)
+    indexes = (probs.cumsum(axis=axis) > r).argmax(axis=1 + axis)
+    if n is None:
+        return indexes[0]
+    return indexes
+
+
+def convert_2d_to_1d_indexes(indexes: Iterable[Tuple[int, int]], n_rows: Optional[int] = None) -> np.ndarray:
+    """
+    Convert 2D indexes to 1D indexes.
+
+    This function transforms a list or array of 2D integer indexes into their equivalent 1D format based
+    on the number of rows in the target matrix. If the number of rows (`n_rows`) is not provided, it is
+    calculated automatically based on the maximum row index found in the input.
+
+    :param indexes: A list, tuple, or NumPy array of 2D integer indexes. Each index is represented as a
+        tuple or array of two integers indicating a row and a column.
+    :param n_rows: Optional integer specifying the number of rows in the target 2D structure. Defaults
+        to None, in which case it is computed from the input indexes.
+
+    :return: A NumPy array of 1D indexes corresponding to the provided 2D indexes when flattened
+        row-major order.
+    :rtype: np.ndarray
+    """
+    indexes = np.asarray(indexes)
+    if indexes.size == 0:
+        return np.array([], dtype=int)
+    if indexes.dtype not in [np.int32, np.int64, int]:
+        raise TypeError("Indexes must be integers.")
+    if indexes.ndim != 2 or indexes.shape[1] != 2:
+        raise ValueError("Indexes must be a 2D array with shape (n_indexes, 2).")
+    if n_rows is not None and (not isinstance(n_rows, int) or n_rows <= 0):
+        raise TypeError("n_rows must be a positive integer.")
+    if n_rows is None:
+        n_rows = np.max(indexes[:, 0]) + 1
+    new_indexes = indexes[:, 0] * n_rows + indexes[:, 1]
+    return new_indexes
+
+
+def convert_1d_to_2d_indexes(indexes: Iterable[int], n_rows: int) -> np.ndarray:
+    """
+    Converts a 1D array of integer indexes to a 2D array of row and column indexes.
+
+    This function takes a one-dimensional array of integers representing linear
+    indexes and converts it into a two-dimensional array of row and column
+    coordinates. The number of rows in the corresponding 2D space can be specified
+    explicitly or is inferred as the square root of the number of indexes if not given.
+
+    :param indexes: A 1D iterable of integers specifying the linear indexes
+        to convert into row and column indexes.
+    :type indexes: Iterable[int]
+    :param n_rows: A positive integer specifying the number of rows
+        in the 2D coordinate space. If not provided, it defaults to the square root
+        of the number of indexes.
+    :type n_rows: int
+    :return: A 2D NumPy array with shape (n_indexes, 2), where each row contains
+        the row and column indexes corresponding to the input linear index.
+    :rtype: np.ndarray
+    """
+    indexes = np.asarray(indexes)
+    if indexes.size == 0:
+        return np.array([], dtype=int)
+    if indexes.dtype not in [np.int32, np.int64, int]:
+        raise TypeError("Indexes must be integers.")
+    if indexes.ndim != 1:
+        raise ValueError("Indexes must be a 1D array with shape (n_indexes, ).")
+    if not isinstance(n_rows, int) or n_rows <= 0:
+        raise TypeError("n_rows must be a positive integer.")
+    new_indexes = np.stack([indexes // n_rows, indexes % n_rows], axis=-1)
+    return new_indexes
+
+
+def matmul(left: Any, right: Any, operator: Literal["einsum", "matmul", "@"] = "@"):
+    r"""
+    Perform a matrix multiplication of two matrices.
+
+    :param left: Left matrix.
+    :type left: Any
+    :param right: Right matrix.
+    :type right: Any
+    :param operator: Operator to use for the matrix multiplication.
+        "einsum" for einsum, "matmul" for matmul, "@" for __matmul__.
+    :type operator: Literal["einsum", "matmul", "@"]
+
+    :return: Result of the matrix multiplication.
+    :rtype: Any
+    """
+    if operator == "matmul":
+        return qml.math.matmul(left, right)
+    if operator == "@":
+        return left @ right
+    return qml.math.einsum("...ij,...jk->...ik", left, right)
+
+
+def circuit_matmul(
+    first_matrix: Any,
+    second_matrix: Any,
+    direction: MatmulDirectionType = _CIRCUIT_MATMUL_DIRECTION,
+    operator: Literal["einsum", "matmul", "@"] = "@",
+) -> Any:
+    r"""
+    Perform a matrix multiplication of two matrices with the given direction.
+
+    :param first_matrix: First matrix.
+    :type first_matrix: Any
+    :param second_matrix: Second matrix.
+    :type second_matrix: Any
+    :param direction: Direction of the matrix multiplication. "rl" for right to left and "lr" for left to right.
+        That means the result will be first_matrix @ second_matrix if direction is "rl" and second_matrix @ first_matrix
+    :type direction: Literal["rl", "lr"]
+    :param operator: Operator to use for the matrix multiplication.
+        "einsum" for einsum, "matmul" for matmul, "@" for __matmul__.
+    :type operator: Literal["einsum", "matmul", "@"]
+
+    :return: Result of the matrix multiplication.
+    :rtype: Any
+    """
+    left, right = MatmulDirectionType.place_ops(direction, first_matrix, second_matrix)
+    return matmul(left, right, operator)
+
+
+def fermionic_operator_matmul(
+    first_matrix: Any,
+    second_matrix: Any,
+    direction: MatmulDirectionType = _FOP_MATMUL_DIRECTION,
+    operator: Literal["einsum", "matmul", "@"] = "@",
+):
+    r"""
+    Perform a matrix multiplication of two fermionic operator matrices with the given direction.
+
+    :param first_matrix: First fermionic operator matrix.
+    :type first_matrix: Any
+    :param second_matrix: Second fermionic operator matrix.
+    :type second_matrix: Any
+    :param direction: Direction of the matrix multiplication. "rl" for right to left and "lr" for left to right.
+        That means the result will be first_matrix @ second_matrix if direction is "rl" and second_matrix @ first_matrix
+        if direction is "lr".
+    :type direction: Literal["rl", "lr"]
+    :param operator: Operator to use for the matrix multiplication.
+        "einsum" for einsum, "matmul" for matmul, "@" for __matmul__.
+    :type operator: Literal["einsum", "matmul", "@"]
+
+    :return: Result of the matrix multiplication.
+    :rtype: Any
+    """
+    left, right = MatmulDirectionType.place_ops(direction, first_matrix, second_matrix)
+    return matmul(left, right, operator)
+
+
+def dagger(tensor: Any) -> Any:
+    r"""
+    Compute the conjugate transpose of the tensor.
+
+    :param tensor: Input tensor.
+    :type tensor: Any
+
+    :return: Conjugate transpose of the tensor.
+    :rtype: Any
+    """
+    return qml.math.conj(qml.math.einsum("...ij->...ji", tensor))
+
+
+def det(tensor: Any) -> Any:
+    r"""
+    Compute the determinant of the tensor.
+
+    :param tensor: Input tensor.
+    :type tensor: Any
+
+    :return: Determinant of the tensor.
+    :rtype: Any
+    """
+    backend = qml.math.get_interface(tensor)
+    if backend in ["autograd", "numpy"]:
+        return qml.math.linalg.det(tensor)
+    return qml.math.det(tensor)
+
+
+def svd(tensor: Any) -> Tuple[Any, Any, Any]:
+    r"""
+    Compute the singular value decomposition of the tensor.
+
+    :param tensor: Input tensor.
+    :type tensor: Any
+
+    :return: Singular value decomposition of the tensor.
+    :rtype: Tuple[Any, Any, Any]
+    """
+    backend = qml.math.get_interface(tensor)
+    if backend in ["autograd", "numpy", "torch"]:
+        return qml.math.linalg.svd(tensor)
+    return qml.math.svd(tensor)  # pragma: no cover
+
+
+def orthonormalize(tensor: Any, check_if_normalize: bool = True, raises_error: bool = False) -> Any:
+    r"""
+    Orthonormalize the tensor.
+
+    ..math::
+        U, S, V = SVD(tensor)
+        return U @ V
+
+    :param tensor: Input tensor.
+    :type tensor: Any
+    :param check_if_normalize: Whether to check if the tensor is already orthonormalized.
+    :type check_if_normalize: bool
+
+    :return: Orthonormalized tensor.
+    :rtype: Any
+    """
+    try:
+        if check_if_normalize:
+            if check_is_unitary(tensor):
+                return tensor
+        u, s, v = svd(tensor)
+        # test if the tensor is already orthonormalized with the eigenvalues
+        if qml.math.allclose(s, 1):
+            return tensor
+        return matmul(u, v, "einsum")
+    except Exception as e:
+        if raises_error:
+            raise e
+        return tensor
+
+
+def eye_like(tensor: Any):
+    """
+    Generate an identity-like tensor following the shape of the provided tensor.
+
+    This function creates a tensor with the same shape as the input `tensor`, but
+    with its two last dimensions set to form an identity matrix (i.e., ones on the
+    diagonal and zeros elsewhere). The values of the generated tensor will be of
+    the same type as the input tensor.
+
+    :param tensor: The input tensor of any shape. The two last dimensions are
+                   treated as rows and columns for the identity-like matrix.
+    :type tensor: Any
+    :return: A tensor of the same shape and type as the input with an identity-like
+             structure in its two last dimensions.
+    :rtype: Any
+    """
+    eye = qml.math.zeros_like(tensor)
+    tensor_shape = qml.math.shape(tensor)
+    eye[..., qml.math.arange(tensor_shape[-2]), qml.math.arange(tensor_shape[-1])] = 1
+    return eye
+
+
+def check_is_unitary(tensor: Any):
+    """
+    Checks if the given tensor is unitary.
+
+    A unitary tensor satisfies the property that the product of the tensor and its
+    Hermitian conjugate (dagger) equals the identity matrix of the same shape.
+
+    :param tensor: Input tensor to check for unitarity.
+    :type tensor: Any
+    :return: True if the tensor is unitary, otherwise False.
+    :rtype: bool
+    """
+    return qml.math.allclose(matmul(tensor, dagger(tensor)), eye_like(tensor))
