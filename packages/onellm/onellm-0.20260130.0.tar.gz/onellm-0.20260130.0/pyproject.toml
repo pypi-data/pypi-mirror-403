@@ -1,0 +1,116 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "onellm"
+dynamic = ["version"]
+description = "A unified interface for interacting with large language models from various providers - a complete drop-in replacement for OpenAI's client"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Ran Aroussi", email = "ran@aroussi.com"}
+]
+dependencies = [
+    "requests>=2.32.5",
+    "aiohttp>=3.13.3",
+    "pydantic>=2.12.5",
+    "PyYAML>=6.0.3",
+    "openai>=2.15.0",
+    "tiktoken>=0.12.0",
+    "huggingface-hub>=1.3.4",
+    # Transitive pins — minimum safe versions for known CVEs
+    "urllib3>=2.6.3",
+    "filelock>=3.20.3",
+    "pyasn1>=0.6.2",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/muxi-ai/onellm"
+"Documentation" = "https://docs.muxi.io"
+"Issues" = "https://github.com/muxi-ai/onellm/issues"
+
+[project.optional-dependencies]
+cache = [
+    "sentence-transformers>=5.2.2",
+    "faiss-cpu>=1.13.2",
+]
+all = [
+    "anthropic>=0.76.0",
+    "google-generativeai>=0.8.6",
+    "boto3>=1.42.35",
+    "llama-cpp-python>=0.3.16",
+    "google-auth>=2.48.0",
+    "google-cloud-aiplatform>=1.134.0",
+    "sentence-transformers>=5.2.2",
+    "faiss-cpu>=1.13.2",
+]
+bedrock = [
+    "boto3>=1.42.35",
+]
+vertexai = [
+    "google-auth>=2.48.0",
+    "google-cloud-aiplatform>=1.134.0",
+]
+llama = [
+    "llama-cpp-python>=0.3.16",
+]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.0.0",
+    "black>=26.1.0",
+    "isort>=7.0.0",
+    "mypy>=1.19.1",
+    "ruff>=0.14.14",
+    "python-dotenv>=1.2.1",
+]
+
+[project.scripts]
+onellm = "onellm.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["onellm*"]
+
+[tool.setuptools.dynamic]
+version = {file = ["onellm/.version"]}
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "N", "W", "C90", "I", "B", "UP", "A"]
+ignore = [
+    "E501",   # Line too long (handled by black)
+    "A002",   # Argument shadowing builtin (e.g. `input`) — OpenAI API compat
+    "C901",   # Function too complex — tracked for incremental cleanup
+    "E402",   # Module-level import not at top — integration test path setup
+    "B904",   # raise ... from err — tracked for incremental cleanup
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
