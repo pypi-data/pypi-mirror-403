@@ -1,0 +1,53 @@
+"""Data models for Slack DLP SDK."""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class RuleAction(StrEnum):
+    """Actions that can be taken when a DLP rule is triggered."""
+
+    ALERT_ONLY = "ALERT_ONLY"
+    USER_WARNING = "USER_WARNING"
+    TOMBSTONE = "TOMBSTONE"
+
+
+class SystemDetector(StrEnum):
+    """System-defined detectors for DLP rules."""
+
+    CREDIT_CARD_AMEX = "CREDIT_CARD_AMEX"
+    CREDIT_CARD_MASTERCARD = "CREDIT_CARD_MASTERCARD"
+    CREDIT_CARD_VISA = "CREDIT_CARD_VISA"
+    CREDIT_CARD_DISCOVER = "CREDIT_CARD_DISCOVER"
+    ALL_CREDIT_CARDS = "ALL_CREDIT_CARDS"
+    NATIONAL_ID_AUSTRALIA_TFN = "NATIONAL_ID_AUSTRALIA_TFN"
+    NATIONAL_ID_BRAZIL_CPF_NUMBER = "NATIONAL_ID_BRAZIL_CPF_NUMBER"
+    NATIONAL_ID_CANADA_SIN = "NATIONAL_ID_CANADA_SIN"
+    NATIONAL_ID_FRANCE_NIR = "NATIONAL_ID_FRANCE_NIR"
+    NATIONAL_ID_INDIA_AADHAAR_NUMBER = "NATIONAL_ID_INDIA_AADHAAR_NUMBER"
+    NATIONAL_ID_JAPAN_MY_NUMBER = "NATIONAL_ID_JAPAN_MY_NUMBER"
+    NATIONAL_ID_SOUTH_KOREA_RRN = "NATIONAL_ID_SOUTH_KOREA_RRN"
+    NATIONAL_ID_NETHERLANDS_BSN = "NATIONAL_ID_NETHERLANDS_BSN"
+    NATIONAL_ID_SINGAPORE_NRIC = "NATIONAL_ID_SINGAPORE_NRIC"
+    NATIONAL_ID_US_SSN = "NATIONAL_ID_US_SSN"
+    NATIONAL_ID_UNITED_KINGDOM = "NATIONAL_ID_UNITED_KINGDOM"
+
+
+class ChannelShareTargetType(StrEnum):
+    """Types of channel share targets for DLP rules."""
+
+    ALL = "ALL"
+    INTERNAL_ONLY = "INTERNAL_ONLY"
+    EXTERNAL_ONLY = "EXTERNAL_ONLY"
+
+
+class ChannelType(StrEnum):
+    """Types of channels for DLP rules to target."""
+
+    PUBLIC = "PUBLIC"
+    PRIVATE = "PRIVATE"
+    DMS = "DMS"
+
+
+Detector = SystemDetector | dict[str, str] | str
