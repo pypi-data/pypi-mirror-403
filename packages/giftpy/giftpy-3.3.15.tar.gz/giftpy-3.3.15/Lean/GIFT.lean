@@ -1,0 +1,48 @@
+-- GIFT: Geometric Integration of Fundamental Topologies
+-- Main entry point for Lean 4 formalization
+-- Version: 3.3.14 (250+ certified relations + Selection Principle + Tier1 Bounds)
+
+import GIFT.Core
+import GIFT.Relations
+import GIFT.Certificate
+
+-- V4.0: Mathematical Foundations (real content, not just arithmetic)
+import GIFT.Foundations
+
+-- V5.0: Algebraic Foundations (octonion-based derivation)
+import GIFT.Algebraic
+
+-- Topological Extension: +12 relations (25 total)
+import GIFT.Relations.GaugeSector
+import GIFT.Relations.NeutrinoSector
+import GIFT.Relations.LeptonSector
+import GIFT.Relations.Cosmology
+
+-- Mass Factorization Theorem: +11 relations (v1.6.0)
+import GIFT.Relations.MassFactorization
+
+-- V2.0 New modules
+import GIFT.Sequences      -- Fibonacci, Lucas, Recurrence
+import GIFT.Primes         -- Prime Atlas (direct, derived, Heegner)
+import GIFT.Moonshine      -- Monstrous moonshine (Monster group, j-invariant)
+import GIFT.McKay          -- McKay correspondence, Golden emergence
+
+-- V3.0: Joyce Perturbation Theorem
+import GIFT.Sobolev            -- Sobolev spaces H^k
+import GIFT.DifferentialForms  -- Exterior calculus
+import GIFT.ImplicitFunction   -- Implicit function theorem
+import GIFT.IntervalArithmetic -- Verified numerical bounds
+import GIFT.Joyce              -- Torsion-free G2 existence
+
+-- V4.0: Dimensional Hierarchy
+import GIFT.Foundations.GoldenRatioPowers  -- phi^-2, phi^-54, 27^phi
+import GIFT.Hierarchy                       -- Master hierarchy formula
+
+-- V5.0: Extended Observables (~50 observables, 0.24% mean deviation)
+import GIFT.Observables  -- PMNS, CKM, mass ratios, cosmology
+
+-- V3.3.3: DG-Ready Geometry Infrastructure
+import GIFT.Geometry  -- Exterior algebra, differential forms, Hodge star on ℝ⁷
+
+-- V3.3.8: Spectral Gap (Yang-Mills mass gap = 14/99)
+import GIFT.Spectral  -- Mass gap ratio, Cheeger bounds, Yang-Mills prediction
