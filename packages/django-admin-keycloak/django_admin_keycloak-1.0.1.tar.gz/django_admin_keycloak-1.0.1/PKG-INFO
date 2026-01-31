@@ -1,0 +1,82 @@
+Metadata-Version: 2.4
+Name: django-admin-keycloak
+Version: 1.0.1
+Summary: Django Admin Keycloak
+License-File: LICENSE
+Keywords: keycloak,django
+Author: Mikhail Badrazhan
+Author-email: mikhail@devilweb.ru
+Requires-Python: >=3.10,<4.0
+Classifier: Framework :: Django :: 4
+Classifier: Framework :: Django :: 5.0
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Requires-Dist: django (>=4,<7)
+Requires-Dist: python-keycloak (>=7.0.2,<8.0.0)
+Project-URL: Repository, https://github.com/migelbd/django-admin-keycloak
+Description-Content-Type: text/markdown
+
+# django-admin-keycloak
+
+![](https://github.com/migelbd/django-admin-keycloak/raw/main/example.png)
+
+## Keycloak
+Create Client OpenID with callback url `https://keycloak.example.ru/sso/*`
+add client scopes "roles" and 
+set client Backchannel logout URL `https://keycloak.example.ru/sso/logout`
+### Settings 
+```python
+
+# define static config or add provider later in admin management
+KEYCLOAK_PROVIDERS = [
+    {
+        'slug': 'local', # internal django slug
+        'name': 'Local', # name on login form
+        'client_id': 'local_django',
+        'client_secret': 'SECRET',
+        'redirect_uri': '/admin', # redirect uri after login
+        'server_url': 'https://keycloak.example.ru',
+        'realm_name': 'django',
+        'role_staff_user': 'dev_staff', # role for staff users
+        'role_super_user': 'dev_super_user', # role for superusers
+    }
+]
+
+```
+Add to INSTALLED_APPS
+```python
+INSTALLED_APPS = [
+    'django_admin_keycloak',
+    'django.contrib.admin',
+    # ...
+]
+```
+Add to urls.py
+```python
+urlpatterns = [
+    # ...,
+    path('sso/', include('django_admin_keycloak.url')),
+    # ...
+]
+```
+
+If you define static config, you must execute command for update providers.
+```bash
+python manage.py update_static_providers
+```
+## Available signals
+### user_sso_login
+###### On login SSO user
+- session: KeycloakSession
+- request: HttpRequest
+- userinfo: dict
+- access_token: str
+#### user_sso_logout
+###### On logout SSO user
+- session: KeycloakSession
+- request: HttpRequest
+
