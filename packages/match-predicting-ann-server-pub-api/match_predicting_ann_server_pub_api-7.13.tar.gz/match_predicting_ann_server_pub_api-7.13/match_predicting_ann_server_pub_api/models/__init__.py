@@ -1,0 +1,10 @@
+# flake8: noqa
+# import models into model package
+from match_predicting_ann_server_pub_api.models.dummy_dto import DummyDTO
+from match_predicting_ann_server_pub_api.models.network_dto import NetworkDTO
+from match_predicting_ann_server_pub_api.models.predicting_data import PredictingData
+from match_predicting_ann_server_pub_api.models.training_data import TrainingData
+from match_predicting_ann_server_pub_api.models.training_match_dto import TrainingMatchDTO
+from match_predicting_ann_server_pub_api.models.training_network_dto import TrainingNetworkDTO
+from match_predicting_ann_server_pub_api.models.training_progress_message import TrainingProgressMessage
+from match_predicting_ann_server_pub_api.models.training_request_dto import TrainingRequestDTO
