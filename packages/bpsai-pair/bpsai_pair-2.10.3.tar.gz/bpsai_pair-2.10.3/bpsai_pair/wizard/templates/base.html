@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}PairCoder Setup Wizard{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    {% if demo_mode %}
+    <div class="demo-banner">
+        <strong>Demo Mode</strong> - Changes will be saved to: <code>{{ config_path }}</code>
+        <button class="demo-reset-btn" onclick="resetWizard()">Reset</button>
+        <a href="/" class="demo-exit">Exit Demo</a>
+    </div>
+    <div id="debug-tier-panel" class="debug-tier-panel">
+        <span class="debug-label">Tier:</span>
+        <button class="debug-tier-btn {% if tier == 'solo' %}active{% endif %}" onclick="switchDebugTier('solo')">Solo</button>
+        <button class="debug-tier-btn {% if tier == 'pro' %}active{% endif %}" onclick="switchDebugTier('pro')">Pro</button>
+        <button class="debug-tier-btn {% if tier == 'team' %}active{% endif %}" onclick="switchDebugTier('team')">Team</button>
+        <button class="debug-tier-btn {% if tier == 'enterprise' %}active{% endif %}" onclick="switchDebugTier('enterprise')">Enterprise</button>
+    </div>
+    {% endif %}
+    <div class="container">
+        <header>
+            <h1>PairCoder Setup</h1>
+            <div class="header-right">
+                <div class="tier-badge tier-{{ tier }}">{{ tier_display }}</div>
+                {% if tier == 'solo' %}
+                <button class="upgrade-btn" onclick="showUpgradeModal()">Upgrade</button>
+                {% endif %}
+            </div>
+        </header>
+
+        <nav class="step-nav">
+            {% for step in steps %}
+            <div class="step-indicator {% if step.completed %}completed{% endif %} {% if step.current %}current{% endif %}"
+                 data-step="{{ step.number }}"
+                 onclick="navigateToWizardStep({{ step.number }})">
+                <div class="step-circle">
+                    {% if step.completed %}
+                    <span class="check-icon">&#10003;</span>
+                    {% else %}
+                    {{ step.number }}
+                    {% endif %}
+                </div>
+                <span class="step-label">{{ step.name }}</span>
+            </div>
+            {% endfor %}
+        </nav>
+
+        <main>
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer>
+            <p>PairCoder v2 &mdash; AI-augmented pair programming</p>
+        </footer>
+    </div>
+
+    {% include "partials/upgrade_modal.html" %}
+    {% include "partials/license_install.html" %}
+
+    <script src="/static/wizard.js"></script>
+</body>
+</html>
