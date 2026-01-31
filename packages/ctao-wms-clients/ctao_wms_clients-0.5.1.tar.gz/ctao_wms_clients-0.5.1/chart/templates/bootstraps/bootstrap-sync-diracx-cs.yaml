@@ -1,0 +1,41 @@
+{{- if and $.Values.diracServer.bootstrap.syncDiracxCS $.Values.diracServer.bootstrap.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "wms.fullname" . }}-bootstrap-sync-diracx-cs-{{ .Release.Revision  }}
+  labels:
+    app: {{ include "wms.fullname" . }}-bootstrap-sync-diracx-cs-{{ .Release.Revision  }}
+  annotations: {}
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ include "wms.fullname" . }}-bootstrap-sync-diracx-cs-{{ .Release.Revision  }}
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: {{ include "wms.fullname" . }}-bootstrap-sync-diracx-cs
+        image: {{ .Values.diracServer.bootstrap.image }}
+        command:
+          - /bin/sh
+          - -c
+          - |
+            set -ex
+
+            echo "Waiting for bootstrap dirac DB job to complete..."
+            kubectl wait --for=condition=complete job/{{ include "wms.fullname" . }}-bootstrap-dirac-db-{{ .Release.Revision  }} --timeout=600s
+
+            echo "Synchronizing DiracX CS"
+            kubectl exec statefulset/{{ include "wms.master-full-name" . }} -- bash -c '
+              set -xe
+              git config --global user.name "DIRAC Server CI"
+              git config --global user.email "dirac-server-ci@invalid"
+              git config --global --add safe.directory /local_cs_store/initialRepo
+
+              DIRAC_COMPAT_ENABLE_CS_CONVERSION=x dirac internal legacy cs-sync "/opt/dirac/etc/{{ .Values.diracServer.configurationName }}.cfg" /local_cs_store/initialRepo/default.yml
+              git --git-dir=.git -C /local_cs_store/initialRepo/ commit -am "export $(date)" || true
+            '
+        envFrom:
+        - configMapRef:
+            name: {{ .Release.Name }}-dirac-env
+{{- end }}

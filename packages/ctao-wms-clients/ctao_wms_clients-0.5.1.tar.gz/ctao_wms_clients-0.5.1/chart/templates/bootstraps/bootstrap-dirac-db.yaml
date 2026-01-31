@@ -1,0 +1,50 @@
+{{- if and $.Values.diracServer.bootstrap.initDiracDb $.Values.diracServer.bootstrap.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "wms.fullname" . }}-bootstrap-dirac-db-{{ .Release.Revision  }}
+  labels:
+    app: {{ include "wms.fullname" . }}-bootstrap-dirac-db-{{ .Release.Revision  }}
+  annotations: {}
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ include "wms.fullname" . }}-bootstrap-dirac-db-{{ .Release.Revision  }}
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: {{ include "wms.fullname" . }}-bootstrap-dirac-db
+        image: {{ .Values.diracServer.bootstrap.image }}
+        command:
+          - /bin/sh
+          - -c
+          - |
+            set -ex
+            echo "Waiting for bootstrap configure dirac job to complete..."
+            kubectl wait --for=condition=complete job/{{ include "wms.fullname" . }}-bootstrap-dirac-configure-{{ .Release.Revision  }} --timeout=600s || (echo "failed to wait for bootstrap job dirac-configure";  exit 1)
+
+            echo "Waiting for ComponentMonitoring to be running..."
+            kubectl wait deployment/{{ include "wms.dirac-service-name" (dict "root" . "comp" "componentMonitoring") }} --for=condition=Available=True --timeout=600s || (echo "failed to wait for {{ include "wms.kebab" "componentMonitoring" }} deployment";  exit 1)
+
+            echo "Installing DiracXAuthDB"
+            kubectl exec statefulset/{{ include "wms.master-full-name" . }} -- bash -c '
+              set -e
+              pip install diracx-db
+              mysql --host $DB_HOSTNAME -u$DB_ROOT_USER -p$DB_ROOT_PASSWORD < /configurations/diracx_auth_db.sql
+              mysql --host $DB_HOSTNAME -u$DB_USER -p$DB_PASSWORD -e "show databases" | grep "DiracXAuthDB"
+              python -m diracx.db init-sql
+            '
+
+            {{- range $database := .Values.diracServer.diracDatabases }}
+            echo "Installing {{ $database }}"
+            kubectl exec statefulset/{{ include "wms.master-full-name" $ }} -- bash -c '
+              source /opt/dirac/bashrc
+              dirac-install-db -c yes --cfg /opt/dirac/etc/{{ $.Values.diracServer.configurationName }}.cfg -ddd {{ $database }}
+            '
+            {{- end }}
+
+        envFrom:
+        - configMapRef:
+            name: {{ .Release.Name }}-dirac-env
+{{- end }}

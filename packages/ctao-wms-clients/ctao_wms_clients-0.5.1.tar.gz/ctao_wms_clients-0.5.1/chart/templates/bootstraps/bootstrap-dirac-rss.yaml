@@ -1,0 +1,61 @@
+{{- if and $.Values.diracServer.bootstrap.syncRSS $.Values.diracServer.bootstrap.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "wms.fullname" . }}-bootstrap-dirac-sync-rss-{{ .Release.Revision  }}
+  labels:
+    app: {{ include "wms.fullname" . }}-bootstrap-dirac-sync-rss-{{ .Release.Revision  }}
+  annotations: {}
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ include "wms.fullname" . }}-bootstrap-dirac-sync-rss-{{ .Release.Revision  }}
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: {{ include "wms.fullname" . }}-bootstrap-dirac-sync-rss
+        image: {{ .Values.diracServer.bootstrap.image }}
+        command:
+          - /bin/sh
+          - -c
+          - |
+            set -ex
+            echo "Waiting for bootstrap configure Job to complete..."
+            kubectl wait --for=condition=complete job/{{ include "wms.fullname" . }}-bootstrap-dirac-configure-{{ .Release.Revision  }} --timeout=600s || (echo "failed to wait for bootstrap job dirac-configure";  exit 1)
+
+            {{- if .Values.diracServer.diracComponents.resourceStatus }}
+            echo "Wait for ResourceStatus"
+            kubectl wait deployment/{{ include "wms.dirac-service-name" (dict "root" . "comp" "resourceStatus") }} --for=condition=Available=True --timeout=600s || (echo "failed to wait for {{ include "wms.kebab" "resourceStatus" }} deployment";  exit 1)
+            echo "ResourceStatus ready"
+            {{- end }}
+
+            echo "Synchronizing RSS"
+            kubectl exec statefulset/{{ include "wms.master-full-name" . }} -- bash -c '
+              source /opt/dirac/bashrc
+              echo "init RSS sync"
+              dirac-rss-sync --init -o LogLevel=VERBOSE --cfg /opt/dirac/etc/{{ .Values.diracServer.configurationName }}.cfg -c yes
+              echo "RSS sync Site"
+              dirac-rss-sync --element Site -o LogLevel=VERBOSE --cfg /opt/dirac/etc/{{ .Values.diracServer.configurationName }}.cfg -c yes
+              echo "RSS sync Resource"
+              dirac-rss-sync --element Resource -o LogLevel=VERBOSE --cfg /opt/dirac/etc/{{ .Values.diracServer.configurationName }}.cfg -c yes
+              echo "RSS sync Node"
+              dirac-rss-sync --element Node -o LogLevel=VERBOSE --cfg /opt/dirac/etc/{{ .Values.diracServer.configurationName }}.cfg -c yes
+
+              echo "List RSS StorageElement"
+              dirac-rss-list-status --element Resource --elementType StorageElement -c yes
+              echo "List RSS Sites"
+              dirac-rss-list-status --element Site -c yes
+
+              echo "Allow Site CTAO.CI.de"
+              # allow site exits with error status about, non-existent proxy even if local authentication works
+              set +o pipefail
+              site_output=$(dirac-admin-allow-site "CTAO.CI.de" "Enable CTAO.CI.de" --cfg /opt/dirac/etc/{{ .Values.diracServer.configurationName }}.cfg -c yes 2>&1 || true)
+              echo "$site_output"
+              echo "$site_output" | grep -q 'CTAO.CI.de .* Active'
+            '
+
+        envFrom:
+        - configMapRef:
+            name: {{ .Release.Name }}-dirac-env
+{{- end }}

@@ -1,0 +1,1023 @@
+# Default values for wms.
+# These default values are currently the ones
+# used for local development and testing, they are NOT INTENDED FOR PRODUCTION.
+#
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+nameOverride: ""
+fullnameOverride: ""
+
+# -- Image settings.
+image:
+  # -- Prefix of the repository, pods will use <repository_prefix>-{server,client,ce}
+  repository_prefix: "harbor.cta-observatory.org/dpps/wms"
+  # -- Image tag, if not set, the chart's appVersion will be used
+  tag:
+  pullPolicy: IfNotPresent
+
+global:
+  storageClassName: standard
+  registry: harbor.cta-observatory.org/proxy_cache
+  dockerRegistry: harbor.cta-observatory.org/proxy_cache
+  # diracx chart
+  images:
+    busybox:
+      repository: harbor.cta-observatory.org/proxy_cache/busybox
+
+# -- Settings for local development
+dev:
+  # -- run tests in the container
+  run_tests: true
+  # -- sleep after test to allow interactive development
+  sleep: false
+  # -- mount the repo volume to test the code as it is being developed
+  mount_repo: true
+
+  # -- tag of the image used to run helm tests
+  client_image_tag:
+
+# These services provide release-independent names for services because some dependent charts can not be configured to use templated names
+iam_alias_service:
+  enabled: true
+  name: wms-dpps-iam-login-service
+
+minio_alias_service:
+  enabled: true
+  name: wms-minio
+
+diracx_alias_service:
+  enabled: true
+  name: wms-diracx
+
+diracClient:
+  hostkey:
+    secretFullName: ""
+
+# -- SQL database use by DIRAC
+diracDatabases:
+  host: 'dirac-db'
+  port: '3306'
+  secretName: dirac-db-password
+  createSecret: true
+  rootUser: "root"
+  rootPassword: "dirac-db-root"
+  user: "Dirac"
+  password: "dirac-db"
+
+# -- Setting for the DIRAC components
+diracServer:
+  podAnnotations: {}
+  podLabels: {}
+  podSecurityContext: {}
+  securityContext: {}
+
+  webApp:
+    # DIRAC WebApp
+    enabled: true
+    hostname: dirac-web-app
+    hostkey:
+      secretFullName: ""
+    extraVolumes: ~
+
+
+    extraVolumeMounts: ~
+
+  voName: ctao.dpps.test
+
+  diracx:
+    legacyExchangeApiKey: diracx:legacy:Mr8ostGuB_SsdmcjZb7LPkMkDyp9rNuHX6w1qAqahDg=
+
+  configmap:
+    create: true
+    name:
+    # masterCS startup configmaps exclusion list
+    excludeFromMasterCSStartup: ("masterCS.cfg" "baseDirac.cfg" "webApp.cfg" "DIRAC.cfg")
+
+  diracConfig:
+    registry:
+      DefaultGroup: "dirac_user"
+      # Registry Users
+      users:
+        dpps_user:
+          DN: "/CN=DPPS User"
+          CA: "/CN=DPPS Development CA"
+        # Add more users as needed
+      # Registry Groups
+      groups:
+        dirac_user:
+          users: ["test_user"]
+          properties: ["NormalUser"]
+        dpps_group:
+          users: ["dpps_user", "test_user"]
+          properties: ["NormalUser", "PrivateLimitedDelegation"]
+        dpps_genpilot:
+          users: ["dpps_user"]
+          properties: ["GenericPilot", "LimitedDelegation"]
+        dirac_admin:
+          users: ["dpps_user"]
+          properties: [
+            "AlarmsManagement", "ServiceAdministrator", "CSAdministrator",
+            "JobAdministrator", "FullDelegation", "ProxyManagement", "Operator"
+          ]
+      # Registry VOs
+      vo:
+        ctao.dpps.test:
+          VOAdmin: dpps_user
+          VOMSName: ctao.dpps.test
+          VOAdminGroup:  dpps_group
+          DefaultGroup: dpps_group
+          IdProvider: wms-dpps-iam-login-service
+      # Registry Hosts
+      # services hosts are already defined
+      hosts:
+        # host.name:
+        #   DN: "/CN=host-cn"
+        #   properties: [
+        #     "TrustedHost", "CSAdministrator", "JobAdministrator",
+        #     "FullDelegation", "ProxyManagement", "Operator",
+        #     "SiteManager", "ProductionManagement", "ServiceAdministrator"
+        #   ]
+
+    resources:
+    # FileCatalog resource configuration
+      fileCatalog: |
+        RucioFileCatalog
+        {
+          CatalogType = FileCatalog
+          AccessType = Read-Write
+          Status = Active
+          Master = True
+          CatalogURL = DataManagement/FileCatalog
+          MetaCatalog = True
+        }
+      # StorageElements resource configuration
+      storageElements: |
+        SandboxSE
+        {
+          BackendType = DISET
+          AccessProtocol.1
+          {
+            Host = {{ include "wms.dirac-service-name" (dict "root" . "comp" "sandboxStore") }}
+            Port = {{ .Values.diracServer.diracComponents.sandboxStore.port }}
+            PluginName = DIP
+            Protocol = dips
+            Path = /WorkloadManagement/SandboxStore
+            Access = remote
+            WSUrl =
+          }
+        }
+      # Sites resource configuration
+      sites: |
+        CTAO
+        {
+          CTAO.CI.de
+          {
+            Name = CTAO.CI.de
+            CE = dirac-ce
+            CEs
+            {
+              dirac-ce
+              {
+                CEType = SSH
+                SubmissionMode = Direct
+                SSHHost = dirac-ce
+                SSHUser = dirac
+                SSHKey = /home/dirac/.ssh/diracuser_sshkey
+                wnTmpDir = /tmp
+                Pilot = True
+                SharedArea = /home/dirac
+                ExtraPilotOptions = --PollingTime 10 --CVMFS_locations=/
+                Queues
+                {
+                  normal
+                  {
+                    maxCPUTime = 172800
+                    SI00 = 2155
+                    MaxTotalJobs = 2500
+                    MaxWaitingJobs = 300
+                    VO = ctao.dpps.test
+                    BundleProxy = True
+                  }
+                }
+              }
+            }
+          }
+        }
+
+  environment:
+    # DIRAC_CFG_MASTER_CS: "/configurations/masterCS.cfg"
+
+  bootstrap:
+    image: harbor.cta-observatory.org/proxy_cache/bitnamilegacy/kubectl:1.33.1
+    enabled: true
+    # allow to enable specific jobs:
+    # bootstrap DIRAC RSS sync
+    syncRSS: true
+    # bootstrap to sync DiracX CS
+    syncDiracxCS: true
+    # bootstrap to create users
+    syncIamUsers: true
+    # bootstrap service databases initialization
+    initDiracDb: true
+    # bootstrap first proxy init
+    firstProxy: true
+    # bootstrap component monitoring
+    componentMonitoring: true
+
+  initContainers:
+    certKeys:
+     # shared volume to mount certs and keys using the initContainer
+      volumes:
+        - name: ssh-dir
+          emptyDir: {}
+        - name: globus-dir
+          emptyDir: {}
+        - name: certs-dir
+          emptyDir: {}
+
+      volumeMounts:
+        - name: ssh-dir
+          mountPath: /home/dirac/.ssh
+        - name: certs-dir
+          mountPath: /opt/dirac/etc/grid-security
+        - name: globus-dir
+          mountPath: /home/dirac/.globus
+
+  configurationName: DPPS-Tests
+
+  masterCS:
+    # StatefulSet Master CS
+    enabled: true
+    # enable to run the service with Tornado (https)
+    tornado: false
+    # hostname
+    hostname: "dirac-master-cs"
+    # port on which to run
+    # CAUTION: it has to be the same as what is in masterCS.cfg
+    port: 9135
+    # extra Volumes (Mounts)
+    hostkey:
+      secretFullName: ""
+    extraVolumes: ~
+    extraVolumeMounts: ~
+
+  # Definition of the DIRAC services we want to run.
+  # We create one service and one deployment per entry
+  # Note that the Port has to be the same as the one in the CS,
+  diracComponents:
+    # Common base definitions
+    # Services
+    _serviceDefaults: &serviceDefaults
+      type: service
+      replicaCount: 1
+    # Agents
+    _agentDefaults: &agentDefaults
+      port: null
+      type: agent
+      replicaCount: 1
+    # Executors
+    _executorDefaults: &executorDefaults
+      port: null
+      type: executor
+      replicaCount: 1
+    # Name of the service (will be used for naming k8 services, pods, deployment, etc)
+    # Configuration System
+    # configurationServer:
+    #   port: 9135
+    #   cmd: Configuration/Server
+    # # To overwrite default config:
+    #   config: |
+    #     Systems
+    #     {
+    #       Configuration
+    #       {
+    #         [...]
+    #       }
+    #     }
+
+    # Framework System
+    proxyManager:
+      port: 9152
+      cmd: Framework/ProxyManager
+      <<: *serviceDefaults
+    bundleDelivery:
+      port: 9158
+      cmd: Framework/BundleDelivery
+      <<: *serviceDefaults
+    systemAdmin:
+      port: 9162
+      cmd: Framework/SystemAdministrator
+      <<: *serviceDefaults
+    # ComponentMonitoring is mandatory
+    componentMonitoring:
+      port: 9190
+      cmd: Framework/ComponentMonitoring
+      <<: *serviceDefaults
+    # Workload Management System
+    # Need ESDB
+    jobMonitoring:
+      port: 9130
+      cmd: WorkloadManagement/JobMonitoring
+      <<: *serviceDefaults
+    jobManager:
+      port: 9132
+      cmd: WorkloadManagement/JobManager
+      type: service
+      replicaCount: 1
+    jobStateUpdate:
+      port: 9136
+      cmd: WorkloadManagement/JobStateUpdate
+      <<: *serviceDefaults
+    wmsAdmin:
+      port: 9145
+      cmd: WorkloadManagement/WMSAdministrator
+      <<: *serviceDefaults
+    matcher:
+      port: 9170
+      cmd: WorkloadManagement/Matcher
+      <<: *serviceDefaults
+    pilotManager:
+      port: 9171
+      cmd: WorkloadManagement/PilotManager
+      <<: *serviceDefaults
+    optimizationMind:
+      port: 9175
+      cmd: WorkloadManagement/OptimizationMind
+      <<: *serviceDefaults
+    sandboxStore:
+      port: 9196
+      cmd: WorkloadManagement/SandboxStore
+      <<: *serviceDefaults
+    # DataManagement System
+    fileCatalog:
+      port: 9197
+      cmd: DataManagement/FileCatalog
+      <<: *serviceDefaults
+    storageElement:
+      port: 9148
+      cmd: DataManagement/StorageElement
+      <<: *serviceDefaults
+    # Monitoring System
+    # monitoring:
+    #   port: 9137
+    #   cmd: Monitoring/Monitoring
+    # Accounting System
+    # dataStore:
+    #   port: 9133
+    #   cmd: Accounting/DataStore
+    # Request Management System
+    reqProxy:
+      port: 9161
+      cmd: RequestManagement/ReqProxy
+      <<: *serviceDefaults
+    reqManager:
+      port: 9140
+      cmd: RequestManagement/ReqManager
+      <<: *serviceDefaults
+    # Resource Status System
+    resourceStatus:
+      port: 9160
+      cmd: ResourceStatus/ResourceStatus
+      <<: *serviceDefaults
+    resourceManagement:
+      port: 9172
+      cmd: ResourceStatus/ResourceManagement
+      <<: *serviceDefaults
+    publisher:
+      port: 9165
+      cmd: ResourceStatus/Publisher
+      <<: *serviceDefaults
+
+    # Definition of the DIRAC agents we want to run.
+    # Workload
+    siteDirector:
+      port: null
+      cmd: WorkloadManagement/SiteDirector
+      <<: *agentDefaults
+    pilotSync:
+      port: null
+      cmd: WorkloadManagement/PilotSyncAgent
+      <<: *agentDefaults
+    pilotStatus:
+      port: null
+      cmd: WorkloadManagement/PilotStatusAgent
+      <<: *agentDefaults
+    # # RMS
+    reqExecuting:
+      port: null
+      cmd: RequestManagement/RequestExecutingAgent
+      <<: *agentDefaults
+    cleanReqDB:
+      port: null
+      cmd: RequestManagement/CleanReqDBAgent
+      <<: *agentDefaults
+
+    # Definition of the DIRAC executors we want to run.
+    optimizers:
+      port: null
+      cmd: WorkloadManagement/Optimizers
+      <<: *executorDefaults
+
+  # List of the databases to be installed
+  diracDatabases:
+    - AccountingDB
+    - FileCatalogDB
+    - InstalledComponentsDB
+    - JobDB
+    - JobLoggingDB
+    - PilotAgentsDB
+    - ProxyDB
+    - ReqDB
+    - ResourceManagementDB
+    - ResourceStatusDB
+    - SandboxMetadataDB
+    - StorageManagementDB
+    - TaskQueueDB
+
+  # -- Recreates some DIRAC databases from scratch. Useful at first installation, but destructive on update: should be changed immediately after the first installation.
+  # This list might overlap with list of of DBs in chart/templates/configmap.yaml
+  resetDatabasesOnStart:
+  - ResourceStatusDB
+  - ProxyDB
+  - JobDB
+  - SandboxMetadataDB
+  - TaskQueueDB
+  - JobLoggingDB
+  - PilotAgentsDB
+  - ReqDB
+  - AccountingDB
+  - FileCatalogDB
+  - StorageManagementDB
+
+  # extra volumes for all dirac components
+  # common volumes are added to "dpps.common-cert-volumes"
+  volumes: []
+
+  #: extra volume mounts for all dirac components
+  volumeMounts: []
+
+
+# -- A simple SSH compute element for testing
+diracCE:
+  enabled: true
+  resources: {}
+  hostkey:
+    secretFullName: ""
+  extraVolumes: []
+
+
+# -- Configuration for the bitnami mariadb subchart. Disable if DIRAC database is provided externally.
+mariadb:
+  global:
+    security:
+      # needed to override bitnami image; see also https://gitlab.cta-observatory.org/cta-computing/dpps/aiv/mariadb-chart/-/issues/1
+      allowInsecureImages: true
+  enabled: true
+  image:
+    registry: harbor.cta-observatory.org/proxy_cache
+    repository: bitnamilegacy/mariadb
+  auth:
+    rootPassword: "dirac-db-root"
+  initdbScripts:
+    create-user.sql: |
+      CREATE USER IF NOT EXISTS 'Dirac'@'%' IDENTIFIED BY 'dirac-db';
+      CREATE USER IF NOT EXISTS 'indigo-iam'@'%' IDENTIFIED BY 'PassW0rd';
+      CREATE DATABASE IF NOT EXISTS `indigo-iam`;
+      GRANT ALL PRIVILEGES ON `indigo-iam`.* TO `indigo-iam`@`%`;
+      FLUSH PRIVILEGES;
+
+# -- Settings for the certificate generator
+cert-generator-grid:
+  enabled: true
+  generatePreHooks: true
+  # cn_base_domain: wms.svc.cluster.local
+
+  extra_server_names:
+  - iam.test.example
+  - voms.test.example
+  - fts
+  - opensearch-cluster-master
+  # for each diracServer.diracComponents create a cert
+  - dirac-master-cs
+  - dirac-ce
+  - dirac-web-app
+  - dirac-client
+  - dirac-proxy-manager
+  - dirac-bundle-delivery
+  - dirac-system-admin
+  - dirac-component-monitoring
+  - dirac-job-manager
+  - dirac-job-monitoring
+  - dirac-job-state-update
+  - dirac-wms-admin
+  - dirac-matcher
+  - dirac-pilot-manager
+  - dirac-pilot-status
+  - dirac-optimization-mind
+  - dirac-sandbox-store
+  - dirac-file-catalog
+  - dirac-storage-element
+  - dirac-req-proxy
+  - dirac-resource-status
+  - dirac-resource-management
+  - dirac-publisher
+  - dirac-req-executing
+  - dirac-req-manager
+  - dirac-clean-req-db
+  - dirac-site-director
+  - dirac-pilot-sync
+  - dirac-optimizers
+
+  # List of users to create certificates for
+  users:
+  - name: DPPS User
+    suffix: ""
+  - name: DPPS User Unprivileged
+    suffix: "-unprivileged"
+  - name: Non-DPPS User
+    suffix: "-non-dpps"
+
+rucio:
+  enabled: false
+  rucioConfig:
+
+# -- Configuration for the cvmfs subchart, included for testing
+cvmfs:
+  enabled: true
+  publish_docker_images:
+    - "harbor.cta-observatory.org/proxy_cache/library/python:3.12-slim"
+
+  publisher:
+    image:
+      repository_prefix: harbor.cta-observatory.org/proxy_cache/bitnamilegacy/kubectl
+      tag: 1.31.1
+
+# -- Secrets needed to access image registries
+imagePullSecrets:
+  - name: harbor-pull-secret
+
+serviceAccount:
+  # -- Specifies whether a service account should be created
+  create: true
+  # -- Automatically mount a ServiceAccount's API credentials?
+  automount: true
+  # -- Annotations to add to the service account
+  annotations: {}
+  # -- The name of the service account to use.
+  # -- If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+# Additional volumes on the output Deployment definition.
+volumes: []
+# - name: foo
+#   secret:
+#     secretName: mysecret
+#     optional: false
+
+# Additional volumeMounts on the output Deployment definition.
+volumeMounts: []
+# - name: foo
+#   mountPath: "/etc/foo"
+#   readOnly: true
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+waitForLoginService:
+  image:
+      repository: almalinux
+      tag: 9
+      pullPolicy: IfNotPresent
+
+iam_external:
+  enabled: false
+
+iam:
+  nameOverride: "dpps-iam"
+  enabled: true
+  dev:
+    mount_repo: false
+
+  iam:
+    # this might have to be set
+    fullnameOverride:
+    mysql:
+      enabled: false
+
+    mariadb:
+      enabled: false
+
+    database:
+      external:
+        # WMS creates release-independent service name for mariadb
+        host: dirac-db
+        port: 3306
+        name: indigo-iam
+        username: indigo-iam
+        password: PassW0rd
+        existingSecret: ""
+
+    loginService:
+      config:
+        java:
+          opts: >-
+            -Xms512m -Xmx512m
+            -Djava.security.egd=file:/dev/./urandom
+            -Dspring.profiles.active=prod
+            -Dlogging.level.org.springframework.web=DEBUG
+            -Dlogging.level.com.indigo=DEBUG
+
+    ingress:
+      enabled: true
+      className: nginx
+      annotations:
+        nginx.ingress.kubernetes.io/ssl-redirect: 'true'
+        nginx.ingress.kubernetes.io/ssl-passthrough: 'true'
+      tls:
+        enabled: true
+        secretName: wms-tls
+
+  cert-generator-grid:
+    enabled: false
+
+  bootstrap:
+    extraVolumeMounts: []
+
+    # TODO: these need to be overridden to use test certs
+    extraVolumes: []
+
+
+    config:
+      # TODO: this needs to match the IAM service name in the k8s cluster
+      issuer: http://wms-dpps-iam-login-service:8080
+      clients:
+        - client_id: dpps-test-client
+          client_secret: secret
+          client_name: WMS Test Client
+          scopes:
+            - scim:write
+            - scim:read
+            - offline_access
+            - openid
+            - profile
+            - iam:admin.write
+            - iam:admin.read
+          grant_types:
+            - authorization_code
+            - password
+            - client_credentials
+            - urn:ietf:params:oauth:grant_type:redelegate
+            - refresh_token
+          redirect_uris:
+            # TODO: these need to match the WMS hostnames
+            - http://wms-diracx:8000/api/auth/device/complete
+            - http://wms-diracx:8000/api/auth/authorize/complete
+
+      users:
+        - username: dpps_user
+          password: dpps-password
+          given_name: DPPS
+          family_name: User
+          role: ROLE_USER
+          groups:
+          - ctao.dpps.test
+          - dpps_group
+          - dpps_genpilot
+          - dirac_admin
+          - dirac_user
+          email: dpps@test.example
+          subject_dn: "DPPS User"
+          cert:
+            kind: env_var_file
+            env_var: X509_USER_CERT
+            default_path: /tmp/usercert.pem
+
+        - username: test_user
+          password: test-password
+          given_name: TestDpps
+          family_name: User
+          role: ROLE_USER
+          groups:
+          - ctao.dpps.test
+          - dpps_group
+          - dirac_user
+          email: dpps@test.example
+          subject_dn: "DPPS User"
+          cert:
+            kind: env_var_file
+            env_var: X509_USER_CERT
+            default_path: /tmp/usercert.pem
+
+        - username: admin-user
+          password: test-password
+          given_name: TestAdmin
+          family_name: User
+          role: ROLE_ADMIN
+          groups:
+          - ctao.dpps.test
+          email: dpps@test.example
+
+    image:
+      repository: harbor.cta-observatory.org/dpps/dpps-iam-client
+      tag:
+      pullPolicy: IfNotPresent
+    env:
+      - name: X509_NON_DPPS_USER_CERT
+        value: /tmp/user-non-dpps-cert.pem
+      - name: X509_UNPRIVILEGED_DPPS_USER_CERT
+        value: /tmp/user-unprivileged-cert.pem
+    tag:
+
+  vomsAA:
+    enabled: true
+    config:
+      host: voms.test.example
+      # this needs to match the group in IAM (TBC)
+      voName: ctao.dpps.test
+    deployment:
+      replicas: 1
+    ingress:
+      enabled: true
+      className: nginx
+      tls:
+        enabled: true
+    # LSC entries for test environment
+    lsc:
+      entries:
+        - "/CN=voms.test.example"
+        - "/CN=DPPS Development CA"
+
+    # Use smaller resources for testing
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    nginxVoms:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          memory: 256Mi
+
+
+# ========= diracx =============
+
+# this name may change depending on how the diracx chart is included
+diracx_deployment_fullname: "{{ .Release.Name }}-diracx"
+
+diracx:
+  enabled: true
+  global:
+    # Override the imagePullPolicy to always so we can using latest image tags
+    # without risking them being outdated.
+    imagePullPolicy: Always
+    # Keep the job log for 1h for investigations
+    batchJobTTL: 3600
+    activeDeadlineSeconds: 900
+    images:
+      tag: "v0.0.2"
+      services: harbor.cta-observatory.org/dpps/diracgrid-diracx-services
+      client: harbor.cta-observatory.org/dpps/diracgrid-diracx-client
+      busybox:
+        tag: "latest"
+        repository: "harbor.cta-observatory.org/proxy_cache/busybox"
+      web:
+        tag: v0.1.0-a10
+        repository: harbor.cta-observatory.org/dpps/diracgrid-diracx-web-static
+
+  initSql:
+    # Should DiracX include an init container which manages the SQL DB schema?
+    # Since we use the DIRAC DBs, we don't need this
+    enabled: false
+    env: {}
+
+  mysql:
+    enabled: false
+
+  opensearch:
+    enabled: true
+    config:
+      opensearch.yml: |
+        cluster.name: opensearch-cluster
+
+        # Bind to all interfaces because we don't know what IP address Docker will assign to us.
+        network.host: 0.0.0.0
+
+        # Setting network.host to a non-loopback address enables the annoying bootstrap checks. "Single-node" mode disables them again.
+        # Implicitly done if ".singleNode" is set to "true".
+        # discovery.type: single-node
+
+        # Start OpenSearch Security Demo Configuration
+        # WARNING: revise all the lines below before you go into production
+        plugins:
+          security:
+            ssl:
+              transport:
+                pemcert_filepath: hostcert.pem
+                pemkey_filepath: hostkey.pem
+                pemtrustedcas_filepath: ca.pem
+                enforce_hostname_verification: false
+              http:
+                enabled: true
+                pemcert_filepath: hostcert.pem
+                pemkey_filepath: hostkey.pem
+                pemtrustedcas_filepath: ca.pem
+            allow_unsafe_democertificates: true
+            allow_default_init_securityindex: true
+            authcz:
+              admin_dn:
+                - CN=kirk,OU=client,O=client,L=test,C=de
+                - CN={{ include "certprefix" . }}-dirac-master-cs
+                - CN={{ include "certprefix" . }}-{{ include "wms.dirac-comp-suffix" "wmsAdmin"}}
+                - CN={{ include "certprefix" . }}-{{ include "wms.dirac-comp-suffix" "jobStateUpdate"}}
+            audit.type: internal_opensearch
+            enable_snapshot_restore_privilege: true
+            check_snapshot_restore_write_privileges: true
+            restapi:
+              roles_enabled: ["all_access", "security_rest_api_access"]
+            system_indices:
+              enabled: true
+              indices:
+                [
+                  ".opendistro-alerting-config",
+                  ".opendistro-alerting-alert*",
+                  ".opendistro-anomaly-results*",
+                  ".opendistro-anomaly-detector*",
+                  ".opendistro-anomaly-checkpoints",
+                  ".opendistro-anomaly-detection-state",
+                  ".opendistro-reports-*",
+                  ".opendistro-notifications-*",
+                  ".opendistro-notebooks",
+                  ".opendistro-asynchronous-search-response*",
+                ]
+        ######## End OpenSearch Security Demo Configuration ########
+
+    extraVolumes: |
+      - name: cafile
+        secret:
+          defaultMode: 420
+          secretName: {{ include "certprefix" . }}-server-cafile
+      - name: dpps-certkey-600
+        secret:
+          defaultMode: 0600
+          secretName: {{ include "certprefix" . }}-opensearch-cluster-master-hostkey
+      - name: dpps-certkey-400
+        secret:
+          defaultMode: 0400
+          secretName: {{ include "certprefix" . }}-opensearch-cluster-master-hostkey
+    extraVolumeMounts:
+      - name: cafile
+        subPath: ca.pem
+        mountPath: /usr/share/opensearch/config/ca.pem
+      - name: dpps-certkey-600
+        subPath: hostcert.pem
+        mountPath: /usr/share/opensearch/config/hostcert.pem
+      - name: dpps-certkey-400
+        subPath: hostkey.pem
+        mountPath: /usr/share/opensearch/config/hostkey.pem
+
+  minio:
+    image:
+      repository: harbor.cta-observatory.org/dpps/quay-io-minio-minio
+      tag: RELEASE.2025-09-07T16-13-09Z
+    mcImage:
+      repository: harbor.cta-observatory.org/dpps/quay-io-minio-mc
+      tag: RELEASE.2025-08-13T08-35-41Z
+    environment:
+      # TODO: this URL needs to match the minio service hostname and port
+      MINIO_BROWSER_REDIRECT_URL: http://wms-minio:32001/
+    rootUser: rootuser
+    rootPassword: rootpass123
+
+  cert-manager:
+    cainjector:
+      image:
+        repository: harbor.cta-observatory.org/dpps/quay-io-jetstack-cert-manager-cainjector
+    webhook:
+      image:
+        repository: harbor.cta-observatory.org/dpps/quay-io-jetstack-cert-manager-webhook
+    controller:
+      image:
+        repository: harbor.cta-observatory.org/dpps/quay-io-jetstack-cert-manager-controller
+    startupapicheck:
+      image:
+        repository: harbor.cta-observatory.org/dpps/quay-io-jetstack-cert-manager-ctl
+
+  developer:
+    # we are not developing diracx in WMS, but this is needed to run the tests
+    # TODO: these need to match release name
+    enabled: true
+    localCSPath: /local_cs_store
+    urls:
+      diracx: http://wms-diracx:8000
+      minio: http://wms-minio:32000
+      #dex: http://wms-dex:32002 # disabled
+      iam: http://wms-dpps-iam-login-service:8080
+      #grafana: http://localhost:32004
+    # demoDir: {{ demo_dir }}
+    # mountedPythonModulesToInstall: {{ mounted_python_modules }}
+    # editableMountedPythonModules: {{ editable_mounted_modules }}
+    # mountedNodeModuleToInstall: {{ node_module_to_mount }}
+    # nodeWorkspacesDirectories: {{ node_module_workspaces }}
+
+  diracx:
+    hostname: wms-diracx
+    # TODO: label all interfaces!
+    # TODO: the URLs of dirac are not templated and have to be set manually on deployment
+    # TODO: they are only used in diracx/templates/diracx/secrets.yaml and can be templated like https://github.com/opensearch-project/helm-charts/blob/main/charts/opensearch/templates/statefulset.yaml#L234
+    settings:
+      DIRACX_CONFIG_BACKEND_URL: "git+file:///cs_store/initialRepo"
+      DIRACX_SERVICE_AUTH_TOKEN_ISSUER: "http://wms-diracx:8000"
+      DIRACX_SERVICE_AUTH_ALLOWED_REDIRECTS: '["http://wms-diracx:8000/api/docs/oauth2-redirect", "http://wms-diracx:8000/#authentication-callback"]'
+      DIRACX_SANDBOX_STORE_BUCKET_NAME: sandboxes
+      DIRACX_SANDBOX_STORE_S3_CLIENT_KWARGS: '{"endpoint_url": "http://wms-minio:9000", "aws_access_key_id": "rootuser", "aws_secret_access_key": "rootpass123"}'
+      DIRACX_SANDBOX_STORE_AUTO_CREATE_BUCKET: "true"
+      DIRACX_SERVICE_AUTH_ACCESS_TOKEN_EXPIRE_MINUTES: "120"
+      DIRACX_SERVICE_AUTH_REFRESH_TOKEN_EXPIRE_MINUTES: "360"
+      DIRACX_SERVICE_AUTH_TOKEN_KEYSTORE: "file:///keystore/jwks.json"
+      DIRACX_LEGACY_EXCHANGE_HASHED_API_KEY: "19628aa0cb14b69f75b2164f7fda40215be289f6e903d1acf77b54caed61a720"
+    sqlDbs:
+      default:
+        rootUser: root
+        rootPassword: dirac-db-root
+        user: Dirac
+        password: dirac-db
+        host: dirac-db:3306
+      dbs:
+        AuthDB:
+         internalName: DiracXAuthDB
+        JobDB:
+        JobLoggingDB:
+        SandboxMetadataDB:
+        TaskQueueDB:
+    osDbs:
+      dbs:
+        JobParametersDB:
+
+    # Increase diracx startup probe while draic server is starting
+    startupProbe:
+      timeoutSeconds: 5
+      periodSeconds: 15
+      failureThreshold: 60 # 15 × 60 = 900s = 15 minutes
+
+  rabbitmq:
+    enabled: true
+    image:
+      registry: harbor.cta-observatory.org/proxy_cache
+      repository: bitnamilegacy/rabbitmq
+    podSecurityContext:
+      enabled: false
+    containerSecurityContext:
+      enabled: false
+    auth:
+      existingPasswordSecret: rabbitmq-secret
+      existingErlangSecret: rabbitmq-secret
+
+  dex:
+    enabled: false
+
+  indigoiam:
+    image:
+      repository: indigoiam/iam-login-service
+      tag: v1.13.0-rc2
+    enabled: false
+
+  ## Open telemetry
+
+  opentelemetry-collector:
+    enabled: false
+
+  elasticsearch:
+    enabled: false
+
+  jaeger:
+    enabled: false
+
+  grafana:
+    enabled: false
+
+  prometheus:
+    enabled: false

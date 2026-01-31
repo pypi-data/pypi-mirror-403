@@ -1,0 +1,172 @@
+{{- $fullName := include "wms.fullname" . -}}
+{{- $chartName := include "wms.name" . -}}
+{{- $root := . -}} # Save top-level context
+# Define one deployment per DIRAC Component
+{{- range $compName, $compVal := .Values.diracServer.diracComponents }}
+{{- $compNameKebab := include "wms.kebab" $compName }}
+{{- if not (hasPrefix "_" $compName) }}
+{{- $svcSuffix := include "wms.dirac-comp-suffix" $compNameKebab }}
+{{- $serviceName := include "wms.dirac-service-name" (dict "root" $root "comp" $compNameKebab) }}
+{{- $appName := include "wms.dirac-app-name" (dict "root" $root "comp" $compNameKebab) }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $serviceName }}
+  labels:
+    {{- include "wms.labels" $root | nindent 4 }}
+    app: {{ $appName }}
+    release: {{ $.Release.Name }}
+spec:
+  replicas: {{ $compVal.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ $appName }}
+      release: {{ $.Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $appName }}
+        release: {{ $.Release.Name }}
+    spec:
+      # The container is now running as "dirac" user
+      # create an initContainer to copy ssh keys
+      initContainers:
+        {{- if eq $compName "componentMonitoring" }}
+        - name: wait-for-bootstrap-component-monitoring
+          image: harbor.cta-observatory.org/proxy_cache/bitnamilegacy/kubectl:1.33.1
+          command:
+            - bash
+            - -c
+            - |
+              set -ex
+              echo "Waiting for ComponentMonitoring bootstrap"
+              kubectl wait --for=condition=complete job/{{ include "wms.fullname" $ }}-bootstrap-component-monitoring-{{ $.Release.Revision  }} --timeout=600s || (echo "failed to wait for bootstrap component monitoring job";  exit 1)
+              echo "Job finished"
+        {{- else }}
+        - name: wait-for-bootstrap-db-job
+          image: harbor.cta-observatory.org/proxy_cache/bitnamilegacy/kubectl:1.33.1
+          command:
+            - bash
+            - -c
+            - |
+              set -ex
+              echo "Waiting for bootstrap Database Job to complete..."
+              kubectl wait --for=condition=complete job/{{ include "wms.fullname" $ }}-bootstrap-dirac-db-{{ $.Release.Revision  }} --timeout=600s || (echo "failed to wait for bootstrap dirac db job";  exit 1)
+              echo "Job finished."
+        {{- end }}
+        {{- include "wms.initContainer.certKeys" $root | nindent 8 }}
+      # The container and tags are defined in the values.yaml
+      containers:
+      - name: {{ $appName }}
+        image: "{{ $.Values.image.repository_prefix }}-server:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+        imagePullPolicy: {{ $.Values.image.pullPolicy }}
+        # TODO: how to have probes with agents and executor?
+        {{- if $compVal.port }}
+        ports:
+          - containerPort: {{ $compVal.port }}
+        livenessProbe:
+          tcpSocket:
+            port: {{ $compVal.port }}
+          periodSeconds: 15
+          failureThreshold: 4
+        readinessProbe:
+          tcpSocket:
+            port: {{ $compVal.port }}
+          periodSeconds: 15
+          failureThreshold: 4
+        {{- end }}
+        command:
+          - bash
+          - -c
+          - |
+            set -xe
+
+            echo "$(date -Is) Starting"
+            echo "DIRAC
+            {
+              VirtualOrganization = {{ $.Values.diracServer.voName }}
+              NoSetup = True
+              Hostname = {{ $serviceName }}
+              Configuration
+              {
+                Site = test.dpps.cta-observatory.org
+                ConfigurationMaster = no
+                ConfigurationServer = {{ include "wms.master-cs-url" $root }}
+                Servers = {{ include "wms.master-cs-url" $root }}
+              }
+            }" > /home/dirac/DIRAC.cfg
+
+            source /opt/dirac/bashrc
+            cat $DIRAC_CFG_PATH/baseDirac.cfg /home/dirac/DIRAC.cfg $DIRAC_CFG_PATH/{{ $compName }}.cfg > /opt/dirac/etc/dirac.cfg
+            echo "Running $DIRAC_EXEC_CMD $DIRAC_COMPONENT"
+            exec $DIRAC_EXEC_CMD $DIRAC_COMPONENT --cfg /opt/dirac/etc/dirac.cfg -ddd
+
+        env:
+        - name: DIRAC_COMPONENT
+          value: {{ $compVal.cmd | quote }}
+        - name: DIRAC_EXEC_CMD
+          value: {{ if eq $compVal.type "service" -}}dirac-service
+            {{- else if eq $compVal.type "agent" -}}dirac-agent
+            {{- else if eq $compVal.type "executor" -}}dirac-executor
+            {{- else -}}dirac-component
+          {{ end }}
+        # Environment variable shared by all pods
+        envFrom:
+        - configMapRef:
+            name: {{ $.Release.Name }}-dirac-env
+
+        # Volue mount points
+        volumeMounts:
+        {{- if $.Values.diracServer.initContainers.certKeys.volumeMounts }}
+        {{- toYaml $.Values.diracServer.initContainers.certKeys.volumeMounts | nindent 8 }}
+        {{- end }}
+        {{ include "dpps.common-cert-mounts" $root | nindent 8 }}
+        - name: dirac-config
+          subPath: {{ $compName }}.cfg
+          mountPath: /configurations/{{ $compName }}.cfg
+        - name: dirac-config
+          subPath: baseDirac.cfg
+          mountPath: /configurations/baseDirac.cfg
+        {{- if $root.Values.rucio.enabled }}
+        - name: rucio-config
+          mountPath: /opt/rucio/etc
+        {{- end }}
+      volumes:
+      {{- if $.Values.diracServer.initContainers.certKeys.volumes }}
+      {{- toYaml $.Values.diracServer.initContainers.certKeys.volumes | nindent 6 }}
+      {{- end }}
+      {{- include "dpps.common-cert-volumes" $root | nindent 6 }}
+      # here we assume that the secret certificate corresponds to the component name
+      {{- include "dpps.common-hostkey-volumes" (dict "root" $root "secretFullName" "" "suffix" $svcSuffix ) | nindent 6 }}
+      - name: dirac-config
+        configMap:
+          name: "{{ $.Values.diracServer.configmap.name | default (printf "%s-dirac-config" $.Release.Name) }}"
+      {{- if $root.Values.rucio.enabled }}
+      - name: rucio-config
+        configMap:
+          name: "{{ tpl $root.Values.rucio.rucioConfig $root }}"
+      {{- end }}
+
+
+---
+{{- /* Only create Service for components that have a port (i.e., services) */ -}}
+{{- if and $compVal.port (eq $compVal.type "service") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $serviceName }}
+  labels:
+    {{- include "wms.labels" $root | nindent 4 }}
+spec:
+  type: NodePort
+  selector:
+    app: {{ $appName }}
+    release: {{ $.Release.Name }}
+  ports:
+    - protocol: TCP
+      port: {{ $compVal.port }}
+{{- end }}
+
+{{- end }}
+{{- end }}
