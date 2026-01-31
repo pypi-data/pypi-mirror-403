@@ -1,0 +1,73 @@
+# Skill Creator MCP Server - Docker Compose 配置
+# 用于本地开发和部署
+
+services:
+  # STDIO 模式（默认用于本地 Claude Code）
+  skill-creator-stdio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: skill-creator-mcp:latest
+    container_name: skill-creator-stdio
+    restart: unless-stopped
+    volumes:
+      # 挂载工作目录，用于处理本地技能项目
+      - ${WORK_DIR:-./work}:/workspace:rw
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["python", "-m", "skill_creator_mcp"]
+    profiles:
+      - stdio
+      - default
+
+  # SSE HTTP 模式（用于远程部署）
+  skill-creator-sse:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: skill-creator-mcp:latest
+    container_name: skill-creator-sse
+    restart: unless-stopped
+    ports:
+      - "8000:8000"  # SSE HTTP 端口
+    volumes:
+      - ${WORK_DIR:-./work}:/workspace:rw
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["python", "-m", "skill_creator_mcp.http"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    profiles:
+      - sse
+
+  # 开发环境（带热重载）
+  skill-creator-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: skill-creator-mcp:dev
+    container_name: skill-creator-dev
+    restart: unless-stopped
+    volumes:
+      - ${WORK_DIR:-./work}:/workspace:rw
+      # 挂载源代码用于开发
+      - ./src:/app/src:rw
+      - ./pyproject.toml:/app/pyproject.toml:rw
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/src
+    command: ["python", "-m", "skill_creator_mcp"]
+    profiles:
+      - dev
+
+volumes:
+  work:
+    driver: local
+
+networks:
+  default:
+    name: skill-creator-network
