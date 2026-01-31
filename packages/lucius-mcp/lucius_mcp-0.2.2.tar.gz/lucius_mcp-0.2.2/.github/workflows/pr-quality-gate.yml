@@ -1,0 +1,48 @@
+name: Pull Request Quality Gate
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  python-quality:
+    uses: ./.github/workflows/_python_check.yml
+    with:
+      python-version: '3.14'
+
+  extract-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: get_version
+        run: |
+          VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+  mcpb-build:
+    needs: [python-quality, extract-version]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/_mcpb_build.yml
+    with:
+      version: ${{ needs.extract-version.outputs.version }}
+      artifact-name: mcpb-bundle-pr-${{ github.event.pull_request.number }}
+
+  docker-build:
+    needs: extract-version
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/_docker_build_push.yml
+    with:
+      image-name: lucius-mcp
+      tags: |
+        pr-${{ github.event.pull_request.number }}
+        sha-${{ github.sha }}
+      labels: |
+        org.opencontainers.image.source=https://github.com/${{ github.repository }}
+        org.opencontainers.image.description=Pull Request Build #${{ github.event.pull_request.number }}
+      push: true

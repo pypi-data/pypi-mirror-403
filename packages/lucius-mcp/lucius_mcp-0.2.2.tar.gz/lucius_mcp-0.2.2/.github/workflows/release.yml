@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  validate-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.tag_version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: get_version
+        run: |
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          echo "tag_version=$TAG_VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Validate version matches pyproject.toml
+        run: |
+          PROJECT_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          TAG_VERSION=${{ steps.get_version.outputs.tag_version }}
+          
+          if [ "$PROJECT_VERSION" != "$TAG_VERSION" ]; then
+            echo "ERROR: Version mismatch!"
+            echo "Tag version: $TAG_VERSION"
+            echo "pyproject.toml version: $PROJECT_VERSION"
+            exit 1
+          fi
+
+  python-quality:
+    needs: validate-version
+    uses: ./.github/workflows/_python_check.yml
+    with:
+      python-version: '3.14'
+
+  mcpb-build:
+    needs: [validate-version, python-quality]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/_mcpb_build.yml
+    with:
+      version: ${{ needs.validate-version.outputs.version }}
+      artifact-name: mcpb-bundle-${{ needs.validate-version.outputs.version }}
+
+  docker-build:
+    needs: [python-quality, validate-version]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/_docker_build_push.yml
+    with:
+      image-name: lucius-mcp
+      tags: |
+        ${{ needs.validate-version.outputs.version }}
+        latest
+      labels: |
+        org.opencontainers.image.source=https://github.com/${{ github.repository }}
+        org.opencontainers.image.description=Release ${{ needs.validate-version.outputs.version }}
+      push: true
+
+  github-release:
+    needs: [validate-version, mcpb-build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mcpb-bundle-${{ needs.validate-version.outputs.version }}
+          path: dist/
+
+      - name: Get Changelog Entry
+        id: changelog_reader
+        uses: mindsers/changelog-reader-action@v2
+        with:
+          version: ${{ github.ref_name }}
+          path: ./CHANGELOG.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body: ${{ steps.changelog_reader.outputs.changes }}
+          files: dist/*.mcpb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  pypi-publish:
+    needs: python-quality
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python Environment
+        uses: ./.github/actions/python-setup
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
