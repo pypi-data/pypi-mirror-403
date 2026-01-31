@@ -1,0 +1,77 @@
+pipeline {
+    agent any  
+
+    environment {
+        REGISTRY = 'https://registry.digitalocean.com/delbank-1/internet-banking'
+        TAG = "${env.BUILD_ID}"
+        GIT_REPO_NAME = "python-sdk"
+        PYPI_API_SOURCE = "https://upload.pypi.org/legacy/"
+        GITEA_PYPI_SOURCE = 'https://git.delbank.srv.br/api/packages/DelbankDev/pypi'
+    }
+        
+    options {
+        disableConcurrentBuilds()
+        timestamps()
+    }
+
+
+    stages {
+        stage('Check Branch') {
+            when {
+                not {
+                    buildingTag()
+                }
+            }
+            agent {
+                docker {
+                    image 'python:3.12-slim'
+                    args '--entrypoint="" -u root'
+                }
+            }
+            steps {
+                script {
+                    env.SAFE_BRANCH = env.BRANCH_NAME.replaceAll('/', '_')
+                    env.TARGET_FILE_PATH = ".Jenkinsfiles/${env.SAFE_BRANCH}.groovy"
+                    if (fileExists(env.TARGET_FILE_PATH)) {
+                        currentBuild.result = 'SUCCESS'
+                        def myScript = load(env.TARGET_FILE_PATH)
+                        myScript.pipelineRoll()
+                    } else {
+                        echo "---------------------Branch '${env.BRANCH_NAME}' should not trigger build. Closing.---------------------"
+                        currentBuild.result = 'ABORTED'
+                    }
+                }
+            }
+        }
+
+        stage('Publish to PyPI') {
+            when {
+                buildingTag()
+            }
+
+            agent {
+                docker {
+                    image 'python:3.12-slim'
+                    args '--entrypoint="" -u root'
+                }
+            }
+            steps {
+                script{
+                    def myScript = load(".Jenkinsfiles/master.groovy")
+                    myScript.pipelineRoll()
+                    withCredentials([
+                     string(credentialsId: 'PYPI_API_KEY', variable: 'PYPI_API_KEY')
+                    ]){
+                        sh """
+                            export TWINE_USERNAME=__token__
+                            export TWINE_PASSWORD=$PYPI_API_KEY
+                            twine upload   --repository-url $PYPI_API_SOURCE dist/delfinance_python_sdk-$VERSION*
+                        """
+                    }
+                }
+            }
+        }
+
+    }
+
+}

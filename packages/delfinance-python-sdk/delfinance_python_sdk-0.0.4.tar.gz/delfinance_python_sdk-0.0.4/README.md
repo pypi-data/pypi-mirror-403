@@ -1,0 +1,99 @@
+# Delfinance SDK - Python
+
+Este repositório contém o SDK oficial da Delfinance para Python, projetado para oferecer uma integração consistente, segura e eficiente com nossas APIs.
+
+## 1. Objetivo
+
+Definir a arquitetura, padrões técnicos e diretrizes para o desenvolvimento do SDK oficial em Python, garantindo consistência, baixo acoplamento, compatibilidade ampla, desempenho e facilidade de manutenção.
+
+## 2. Requisitos e Suporte
+
+O SDK é implementado visando compatibilidade e simplicidade, utilizando bibliotecas padrão onde possível e dependências consagradas.
+
+*   **Runtime Mínimo**: Python 3.7+
+*   **Distribuição**: PyPI
+*   **Dependências Principais**: `requests`
+
+### 2.1 Compatibilidade Retroativa
+O SDK prioriza compatibilidade com versões antigas (Python 3.7+), evitando recursos exclusivos de versões muito recentes (como 3.10+) que limitem a adoção em ambientes corporativos.
+
+### 2.2 Controle de Versão
+O arquivo `requirements.txt` define as versões mínimas compatíveis, garantindo que o SDK funcione com versões recentes das bibliotecas utilizadas.
+
+## 3. Instalação
+
+```bash
+pip install -r requirements.txt
+```
+
+## 4. Estrutura do Projeto
+
+O projeto segue a arquitetura definida nas diretrizes da Delfinance, adaptada para pacotes Python:
+
+```text
+src/
+└── delfinance/
+    ├── abstractions/       # Contratos públicos e configuração
+    │   ├── startup/        # Classes de configuração e fábrica do cliente
+    │   ├── enums/          # Enums globais
+    │   └── dtos/           # DTOs base e comuns
+    ├── utils/              # Helpers internos
+    └── [modulo]/           # Ex: transfers, accounts
+        ├── dtos/           # Objetos de transferência de dados do módulo
+        ├── enums/          # Enums específicos do módulo
+        ├── requests/       # Objetos de requisição
+        ├── responses/      # Objetos de resposta
+        ├── interfaces/     # Contratos dos serviços
+        └── services/       # Implementação da lógica de negócios
+```
+
+## 5. Configuração e Inicialização
+
+O SDK deve ser inicializado fornecendo as credenciais e o ambiente desejado.
+
+```python
+from delfinance.abstractions.startup.delfinance_client import DelfinanceClient
+from delfinance.abstractions.enums.environment import Environment
+
+config = {
+    'apiKey': 'sua_api_key',
+    'accountId': 'seu_account_id',
+    'environment': Environment.SANDBOX,
+    'certificatePath': '/caminho/para/certificado.pem', # Para mTLS
+    'privateKeyPath': '/caminho/para/chave.key'
+}
+
+client = DelfinanceClient(config)
+```
+
+## 6. Diretrizes Técnicas
+
+### Abordagem API-First
+*   O desenvolvimento é guiado pela especificação **OpenAPI** (presente na pasta `openapi/`).
+*   A especificação serve como contrato e guia de modelagem.
+
+### Tratamento de Tipos Sensíveis
+*   **Decimais/Monetários**: Recomenda-se o uso de `Decimal` para evitar erros de ponto flutuante.
+*   **Datas e Horários**: Sempre em **UTC** e no padrão **ISO 8601**.
+
+### Segurança e Logs
+*   **Logs**: O SDK não impõe um logger global, permitindo integração com `logging` padrão do Python.
+*   **Dados Sensíveis**: Nunca devem ser expostos em logs ou prints.
+*   **Autenticação**: Suporte automático a **mTLS** e injeção de **API Key**.
+
+### Ambientes
+Suporte nativo para alternância entre ambientes:
+*   **Sandbox**
+*   **Produção**
+
+### Tratamento de Erros
+O SDK lança exceções específicas para erros de requisição (`requests.exceptions`) e erros da API. Não há validação prévia complexa de regras de negócio no cliente.
+
+## 7. Executando com Docker
+
+Para testes e desenvolvimento local:
+
+```bash
+docker-compose up --build
+```
+Isso iniciará uma aplicação Flask simples que executa um teste de integração e exibe o resultado em `http://localhost:8080`.
