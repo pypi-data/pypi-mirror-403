@@ -1,0 +1,170 @@
+stages:
+  - build_img
+  - pkg
+  - test
+  - pkg_pub
+
+build_docker_img:
+  stage: build_img
+  image: docker:stable
+  script:
+    - docker build -t "$CI_REGISTRY_IMAGE/debian13_pip" .
+    - docker login -u gitlab-ci-token -p "$CI_JOB_TOKEN" "$CI_REGISTRY"
+    - docker push "$CI_REGISTRY_IMAGE/debian13_pip"
+  tags:
+    - ci.inria.fr
+    - small
+    - linux
+  # No build of docker image if haven't changed.
+  rules:
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        - Dockerfile
+      when: always
+
+.whl_pkg:
+  stage: pkg
+  image: "$CI_REGISTRY_IMAGE/debian13_pip"
+  script:
+    - source /usr/local/venvs/dsconv/bin/activate
+    - sed -i 's/version =.*"/version = "'${VERSION}'"/' pyproject.toml
+    - sed -i '/\s*\.\. toctree/,//d;s/:class://g;s/:func://g' sphinx/source/index.rst # to pass twine parsing for pypi publish (without all RST sphinx capabilities)
+    # Add version in package.
+    - echo "__version__ = '"${VERSION}"'" >> src/dsconv/__init__.py
+    # Check if the package is ok for PyPI upload.
+    - python3 -m build
+    - python3 -m twine check dist/*whl
+  artifacts:
+    paths:
+      - dist
+    expire_in: 30 days
+  tags:
+    - ci.inria.fr
+    - small
+    - linux
+
+whl_pkg_rev:
+  extends: .whl_pkg
+  before_script:
+    - VERSION='0.0.0+'${CI_COMMIT_SHA}
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: never
+    - when: on_success
+
+whl_pkg_release:
+  extends: .whl_pkg
+  before_script:
+    - VERSION=$CI_COMMIT_TAG
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: always
+
+whl_test:
+  stage: test
+  image: "$CI_REGISTRY_IMAGE/debian13_pip"
+  coverage: '/Coverage:.*\%/'
+  script:
+    - source /usr/local/venvs/dsconv/bin/activate
+    # Matches version in whl_pkg_rev
+    - python3 -m pip install --no-deps dist/dsconv-0.0.0+${CI_COMMIT_SHA}-py3-none-any.whl
+    - SRC_DIR=$(dirname $(python3 -c "import dsconv as mm; print(mm.__file__)"))
+    # Run tests.
+    - coverage run -a --source $SRC_DIR tests/test_dsconv.py
+    - coverage report $(find $SRC_DIR -name src/dsconv/dsconv.py) | tee /tmp/dsconv_coverage_report
+    # Print coverage.
+    - COV=$(sed -e '/^$/d' /tmp/dsconv_coverage_report | tail -1 | sed -e 's/.*\s\+//')
+    - 'echo Coverage: $COV'
+    # Export coverage as html.
+    - coverage html $(find $SRC_DIR -name "*.py")
+  needs:
+    - job: whl_pkg_rev
+      artifacts: true
+  tags:
+    - ci.inria.fr
+    - small
+    - linux
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: never
+    - when: on_success
+  artifacts:
+    paths:
+      - htmlcov
+    when: always
+    expire_in: 30 days
+
+# Build documentation.
+pre_pages:
+  stage: test
+  image: "$CI_REGISTRY_IMAGE/debian13_pip"
+  variables: {VERSION: "${CI_COMMIT_SHA}"}
+  script:
+    - source /usr/local/venvs/dsconv/bin/activate
+    # Check PEP8.
+    - pycodestyle src/dsconv/dsconv.py
+    # Run doctest except for __init__.py
+    - for PY in $(find src/dsconv -name "*.py" | grep -v -w "__init__.py"); do python3 -m doctest -v $PY || exit 1; done
+    # Build the documentation.
+    - cd sphinx
+    # Edit the version in the project doc conf
+    - sed -i "s/project = '\(.*\)'/project = '\1 version "${VERSION}"'/" source/conf.py
+    - make html
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: never
+    - when: always
+  tags:
+    - ci.inria.fr
+    - small
+    - linux
+  artifacts:
+    paths:
+      - sphinx/build/html/
+    expire_in: 30 days
+
+pages:
+  variables: {VERSION: "${CI_COMMIT_TAG}"}
+  extends: pre_pages
+  script:
+    # Be sure nothing bad happened to the package before publishing the doc.
+    - source /usr/local/venvs/dsconv/bin/activate
+    # Matches version in whl_pkg_release
+    - python3 -m pip install --no-deps ../dist/dsconv-${CI_COMMIT_TAG}-py3-none-any.whl
+    # cwd is sphinx (cf. pre_pages)
+    - mkdir ../public
+    - cp -Rf build/html/* ../public/
+  needs:
+    - job: whl_pkg_release
+      artifacts: true
+  artifacts:
+    paths:
+      - public/
+    expire_in: 30 days
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: always
+    - when: never
+  tags:
+    - ci.inria.fr
+    - small
+    - linux
+
+pypi_pub:
+  stage: pkg_pub
+  image: "$CI_REGISTRY_IMAGE/debian13_pip"
+  script:
+    - source /usr/local/venvs/dsconv/bin/activate
+    - cd dist/
+    - find
+    - TOKEN=$(echo $PYPI_TOKEN | base64 -d)
+    - 'if [[ -z "$TOKEN" ]]; then echo "Error: the token is empty." >&2; exit 1; fi'
+    - python3 -m twine upload -u __token__ -p $(echo $TOKEN) --verbose --non-interactive dsconv-${CI_COMMIT_TAG}-py3-none-any.whl
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: always
+    - when: never
+  tags:
+    - ci.inria.fr
+    - small
+    - linux
