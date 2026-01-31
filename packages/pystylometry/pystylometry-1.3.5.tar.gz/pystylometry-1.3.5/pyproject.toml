@@ -1,0 +1,118 @@
+[tool.poetry]
+name = "pystylometry"
+version = "1.3.5"
+description = "Comprehensive Python package for stylometric analysis"
+authors = ["Craig Trim <craigtrim@gmail.com>"]
+readme = "README.md"
+license = "MIT"
+packages = [{ include = "pystylometry" }]
+keywords = [
+    "stylometry",
+    "nlp",
+    "text-analysis",
+    "authorship",
+    "readability",
+    "lexical-diversity",
+    "readability-metrics",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Text Processing :: Linguistic",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Typing :: Typed",
+]
+
+[tool.poetry.scripts]
+# pystylometry-drift manuscript.txt --window-size=500 --stride=250
+pystylometry-drift = "pystylometry.cli:drift_cli"
+# pystylometry-viewer drift_analyzer.html
+pystylometry-viewer = "pystylometry.cli:viewer_cli"
+# pystylometry-tokenize manuscript.txt --json --metadata
+pystylometry-tokenize = "pystylometry.cli:tokenize_cli"
+
+[tool.poetry.urls]
+Homepage = "https://github.com/craigtrim/pystylometry"
+Repository = "https://github.com/craigtrim/pystylometry"
+Issues = "https://github.com/craigtrim/pystylometry/issues"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+
+[tool.poetry.group.readability.dependencies]
+pronouncing = "^0.2.0"
+# spaCy added for NLP-enhanced Gunning Fog Index (PR #4)
+# Enables accurate proper noun detection (POS tagging) and inflection handling (lemmatization)
+# See: https://github.com/craigtrim/pystylometry/pull/4
+spacy = "^3.8.0"
+
+[tool.poetry.group.syntactic.dependencies]
+spacy = "^3.8.0"
+
+[tool.poetry.group.lexical.dependencies]
+# Lexical lookup tools for rare word and neologism detection
+# Used in hapax legomena analysis to distinguish:
+# - True neologisms (not in WordNet, not in BNC)
+# - Rare words (in BNC but not WordNet, or vice versa)
+# - Common words (in both lexicons)
+bnc-lookup = ">=1.3.0"
+wordnet-lookup = "*"
+
+[tool.poetry.group.viz.dependencies]
+# Visualization support for drift detection and stylometric analysis
+# Install with: pip install pystylometry[viz] or poetry install --with viz
+matplotlib = "^3.8.0"
+seaborn = "^0.13.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+pytest-cov = "^4.0"
+ruff = "^0.1"
+mypy = "^1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=pystylometry --cov-report=term-missing"
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+# JSX template files contain embedded JavaScript that can't be easily line-wrapped
+"pystylometry/viz/jsx/*.py" = ["E501"]
+# Test files may have long assertions and test data
+"tests/*.py" = ["E501"]
+"tests/**/*.py" = ["E501", "E402"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "seaborn",
+    "seaborn.*",
+    "bnc_lookup",
+    "wordnet_lookup",
+    "matplotlib.*",
+]
+ignore_missing_imports = true
