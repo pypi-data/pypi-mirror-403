@@ -1,0 +1,6 @@
+# Release notes for v0.1.10
+
+Changes since v0.1.9:
+
+- style: auto-format code with Black (e7f42bc) by github-actions
+- increase coverage (f4d6d78) by Skhendle@gmail.com
