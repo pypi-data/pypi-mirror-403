@@ -1,0 +1,23 @@
+#######################################################################
+# Copyright (c) 2019-present, Blosc Development Team <blosc@blosc.org>
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+#######################################################################
+
+import numpy as np
+
+import blosc2
+
+shape = (50, 50)
+chunks = (49, 49)
+dtype = np.float64
+typesize = dtype.itemsize
+
+# Create a NDArray from a NumPy array
+random = np.random.default_rng()
+array = random.normal(0, 1, np.prod(shape)).reshape(shape)
+# Use ZFP_RATE codec
+cparams = blosc2.CParams(codec=blosc2.Codec.ZFP_RATE, codec_meta=37)
+a = blosc2.asarray(array, chunks=chunks, cparams=cparams)
+print("compression ratio:", a.schunk.cratio)
