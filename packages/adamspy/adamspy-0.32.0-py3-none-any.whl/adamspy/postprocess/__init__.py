@@ -1,0 +1,146 @@
+"""Package for working with Adams Results
+
+"""
+import os
+from pathlib import Path
+import subprocess
+import re
+import time
+import platform
+
+from ..adamspy import get_mdi
+
+PPT_AFTERSTART_FILENAME = 'pptAS.cmd'
+AVIEW_AFTERSTART_FILENAME = 'aviewAS.cmd'
+RES_LOADED_PATTERN = '! File Name:.*{}.*Time Steps:.*Start Time:.*Stop Time:.*(sec)'
+CMD_MODNAME_PATTERN = r'model create[ \t]+&[ \t]*\n[ \t]*model_name[ \t]*=[ \t]*\w+[ \t]*'
+LOG_FILE_ERROR_PATTERN = '! \\S*Error: '
+
+def launch_ppt(res_file, cmd_file=None, wait=False, timeout=30, _terminate=False):
+    """Launches the Adams PostProcessor and reads in the specified results file.
+
+    Parameters
+    ----------
+    res_file : str
+        Filepath to an Adams Results file.
+    cmd_file : str, optional
+        Adams View command (.cmd) file. If given, this will be loaded before the results file.  This is necessary to view animations.
+    wait : bool, optional
+        If `True`, code execution will freeze until the postprocessor is closed. (the default is False)
+    timeout : float, optional
+        If `wait`=`False`, code execution will freeze until the postprocessor has started loading the results file or until `timeout` secodns have elapsed.
+    _terminate : bool, optional
+        If `True`, the PostProcessor will close immediately.  This is for testing purposes.
+
+    """
+    # Determine the directory, relative results filename, and pptAS name
+    directory, res_file = os.path.split(res_file)
+    if not directory:
+        directory = os.getcwd()
+    ppt_as_filename = os.path.join(directory, AVIEW_AFTERSTART_FILENAME)
+
+
+    # Write the pptAS file
+    with open(ppt_as_filename, 'w') as fid:
+        if cmd_file is not None and os.path.isfile(os.path.join(directory, cmd_file)):
+            # if the .cmd file is specified, get the model name from the cmd file
+            model_name = _get_model_name_from_cmd(cmd_file)
+
+            # Write the command to load the .cmd file
+            fid.write(f'file command read file_name="{cmd_file}"\n')
+
+            # Write the command to load the results file
+            fid.write(f'file results read model_name={model_name} file_name="{res_file}"\n')
+
+            # Open the postprocess window
+            fid.write(f'interface plot window open')
+
+        else:
+            # if the .cmd file is not specified, write the command to load the results file
+            fid.write(f'file results read file_name="{res_file}"\n')
+
+            # Open the postprocess window
+            fid.write(f'interface plot window open')
+
+    # Set the ppt.log filename
+    ppt_log_file = os.path.join(directory, 'aview.log')
+
+    # Remove aview.log
+    if os.path.exists(ppt_log_file):
+        try:
+            os.remove(ppt_log_file)
+        except PermissionError:
+            pass
+
+    # Run the postprocessor
+    if platform.system() == 'Windows':
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        ppt_proc = subprocess.Popen('"{}" aview ru-s i'.format(get_mdi()), cwd=directory, startupinfo=startupinfo)
+
+    else:
+        ppt_proc = subprocess.Popen([get_mdi(), '-c', 'aview', 'ru-s', 'i'], cwd=directory)
+
+    # Terminate immediately or wait for the process to complete before moving on.
+    if _terminate:
+        ppt_proc.terminate()
+    elif wait:
+        ppt_proc.wait()
+    else:
+        sleep_time = 0.2
+        for _i in range(int(timeout/sleep_time)):
+
+            ppt_log_file_exists = os.path.exists(ppt_log_file)
+
+            if ppt_log_file_exists is True:
+                # If ppt.log exists, open it and see if the results have been loaded
+                with open(ppt_log_file, 'r') as fid:
+                    text = fid.read()
+                if re.search(RES_LOADED_PATTERN.format(res_file), text):
+                    break
+
+            time.sleep(sleep_time)
+
+    # Remove the pptAS file
+    try:
+        os.remove(ppt_as_filename)
+    except PermissionError:
+        pass
+
+    return directory
+
+def _get_model_name_from_cmd(filename):
+    """Gets the name of the model defined in the command file.
+
+    Parameters
+    ----------
+    filename : str
+        Filename of Adams View command (.cmd) file
+
+    Returns
+    -------
+    str
+        Name of model defined in the command file.
+
+    """
+    with open(filename, 'r') as fid:
+        text = fid.read()
+
+    mod_name_block = re.findall(CMD_MODNAME_PATTERN, text)[0]
+    mod_name = mod_name_block.split('=')[-1].strip()
+
+    return mod_name
+
+def get_log_errors(log_file: Path):
+    """Checks the log file for errors of the type AviewError.
+
+    Parameters
+    ----------
+    log_file : str
+        Filename of aview log file (usulally aview.log)
+
+    """
+    lines = log_file.read_text(errors='ignore').split('\n')
+    errors = [line for line in lines if re.search(LOG_FILE_ERROR_PATTERN, line, flags=re.I)]
+
+    return errors
