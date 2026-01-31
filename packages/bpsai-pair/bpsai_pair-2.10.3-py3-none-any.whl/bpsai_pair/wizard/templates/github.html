@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}GitHub Integration - PairCoder Setup{% endblock %}
+
+{% block content %}
+<section class="github-page">
+    <div class="page-header">
+        <h2>GitHub Integration</h2>
+        <p class="page-description">Connect your GitHub repository for auto-PRs and workflow automation.</p>
+    </div>
+
+    {% if is_locked %}
+    {% include "partials/locked_overlay.html" %}
+    <div class="form-actions navigation-buttons">
+        <button type="button" class="btn btn-secondary" onclick="window.location.href='/wizard/trello'">Back</button>
+    </div>
+    {% else %}
+    <form id="github-form" class="wizard-form">
+        <div class="form-group">
+            <div class="toggle-item github-enable-toggle">
+                <div class="toggle-switch">
+                    <input type="checkbox" id="github-enabled" name="github_enabled" checked>
+                    <label for="github-enabled" class="toggle-label"></label>
+                </div>
+                <div class="toggle-info">
+                    <h4>Enable GitHub Integration</h4>
+                    <p>Auto-create PRs, detect repositories, and streamline code review.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="github-config-section">
+            <div class="section-divider"></div>
+
+            <div class="form-group">
+                <label>Authentication</label>
+                <div class="credential-field">
+                    <div class="credential-header">
+                        <label for="github-token">Personal Access Token</label>
+                        <a href="https://github.com/settings/tokens/new" target="_blank" rel="noopener" class="help-link">Create token with required scopes &rarr;</a>
+                    </div>
+                    <input type="password" id="github-token" name="personal_access_token"
+                           placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                           class="form-input" autocomplete="off">
+                    <p class="help-text">Required scopes: <code>repo</code>, <code>read:org</code></p>
+                </div>
+
+                <div class="connection-test">
+                    <button type="button" id="test-connection-btn" class="btn btn-secondary" onclick="testGitHubConnection()">Test Connection</button>
+                    <span id="connection-status" class="connection-status"></span>
+                </div>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <div class="form-group">
+                <label>Repository</label>
+                <div class="credential-field">
+                    <div class="credential-header">
+                        <label for="repo-url">Repository URL</label>
+                        <button type="button" class="help-link" onclick="detectRepo()">Auto-detect from .git &rarr;</button>
+                    </div>
+                    <input type="url" id="repo-url" name="repo_url"
+                           placeholder="https://github.com/owner/repo"
+                           class="form-input">
+                </div>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <div class="form-group">
+                <label>Auto-PR Settings</label>
+                <div class="toggle-item">
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="auto-pr-enabled" name="auto_pr" checked>
+                        <label for="auto-pr-enabled" class="toggle-label"></label>
+                    </div>
+                    <div class="toggle-info">
+                        <h4>Auto-create PRs on branch push</h4>
+                        <p>Automatically create pull requests when you push a feature branch.</p>
+                    </div>
+                </div>
+
+                <div class="credential-field" id="reviewers-section">
+                    <label for="default-reviewers">Default Reviewers</label>
+                    <input type="text" id="default-reviewers" name="default_reviewers"
+                           placeholder="@teammate1, @teammate2"
+                           class="form-input">
+                    <p class="help-text">Comma-separated GitHub usernames to request review from.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-actions navigation-buttons">
+            <button type="button" class="btn btn-secondary" onclick="navigateBack()">Back</button>
+            <div class="nav-right">
+                <button type="button" class="btn btn-ghost" onclick="skipGitHub()">Skip</button>
+                <button type="submit" class="btn btn-primary">Next</button>
+            </div>
+        </div>
+    </form>
+</section>
+
+<script>
+// Toggle visibility of config section
+document.getElementById('github-enabled').addEventListener('change', function() {
+    var section = document.getElementById('github-config-section');
+    section.style.display = this.checked ? '' : 'none';
+});
+
+function testGitHubConnection() {
+    var token = document.getElementById('github-token').value.trim();
+    var statusEl = document.getElementById('connection-status');
+    var btn = document.getElementById('test-connection-btn');
+
+    if (!token) {
+        statusEl.textContent = 'Please enter a personal access token.';
+        statusEl.className = 'connection-status error-text';
+        return;
+    }
+
+    btn.disabled = true;
+    statusEl.textContent = 'Testing...';
+    statusEl.className = 'connection-status';
+
+    fetch('/api/github/test', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({token: token})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        if (data.success) {
+            statusEl.textContent = 'Connected as: @' + (data.username || 'unknown');
+            statusEl.className = 'connection-status success-text';
+        } else {
+            statusEl.textContent = data.error || 'Connection failed.';
+            statusEl.className = 'connection-status error-text';
+        }
+    })
+    .catch(function(err) {
+        btn.disabled = false;
+        statusEl.textContent = 'Connection failed. Check your token.';
+        statusEl.className = 'connection-status error-text';
+    });
+}
+
+function detectRepo() {
+    fetch('/api/github/detect-repo')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.repo_url) {
+            document.getElementById('repo-url').value = data.repo_url;
+        }
+    })
+    .catch(function() {});
+}
+
+function skipGitHub() {
+    fetch('/api/github', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled: false})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            window.location.href = data.next_url || '/wizard/budget';
+        }
+    })
+    .catch(function() {
+        window.location.href = '/wizard/budget';
+    });
+}
+
+document.getElementById('github-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    var enabled = document.getElementById('github-enabled').checked;
+    var payload = {enabled: enabled};
+
+    if (enabled) {
+        payload.token = document.getElementById('github-token').value.trim();
+        payload.repo_url = document.getElementById('repo-url').value.trim();
+        payload.auto_pr = document.getElementById('auto-pr-enabled').checked;
+        payload.default_reviewers = document.getElementById('default-reviewers').value.trim();
+    }
+
+    fetch('/api/github', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            window.location.href = data.next_url || '/wizard/budget';
+        } else {
+            alert('Error: ' + (data.error || 'Failed to save GitHub settings'));
+        }
+    })
+    .catch(function() {
+        alert('Failed to save settings. Please try again.');
+    });
+});
+
+function navigateBack() {
+    window.location.href = '/wizard/trello';
+}
+
+// Auto-detect repo on page load
+detectRepo();
+</script>
+{% endif %}
+{% endblock %}
