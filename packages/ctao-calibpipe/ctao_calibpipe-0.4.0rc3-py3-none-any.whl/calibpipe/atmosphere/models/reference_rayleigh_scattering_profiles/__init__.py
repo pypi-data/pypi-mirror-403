@@ -1,0 +1,1 @@
+"""Reference Rayleigh scattering profiles."""
