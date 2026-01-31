@@ -1,0 +1,42 @@
+repos:
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: 'v0.11.12'
+    hooks:
+    -   id: ruff
+        name: ruff
+        args:
+          - --fix
+          - --config
+          - pyproject.toml
+    -   id: ruff-format
+        name: ruff format
+        args:
+          - --config
+          - pyproject.toml
+
+-   repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.7.9
+    hooks:
+      - id: uv-lock
+        name: uv.lock file is up to date
+      - id: uv-export
+        name: requirements.txt is up to date
+        args: [--no-dev, --no-hashes, -o, requirements.txt]
+        files: pyproject.toml
+
+-   repo: local
+    hooks:
+      - id: pyright
+        name: pyright
+        entry: uv run --group dev pyright
+        language: system
+        files: ^src/
+        types: [python]
+      - id: validate-yads-spec
+        name: latest yads spec is valid
+        entry: bash
+        language: system
+        args:
+        -   -c
+        -   "find examples/specs -name '*.yaml' -print0 | xargs -0 uv run check-jsonschema --schemafile spec/yads_spec_latest.json"
+        files: ^(examples/specs/.*\.yaml|spec/yads_spec_latest\.json)$

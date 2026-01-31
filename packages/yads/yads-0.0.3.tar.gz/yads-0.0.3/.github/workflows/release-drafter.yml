@@ -1,0 +1,33 @@
+name: Update draft releases
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit SHA
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-release-draft:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Draft release
+        uses: release-drafter/release-drafter@v6
+        with:
+          config-name: release-drafter.yml
+          commitish: ${{ github.event.inputs.sha || github.sha }}
+          disable-autolabeler: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
