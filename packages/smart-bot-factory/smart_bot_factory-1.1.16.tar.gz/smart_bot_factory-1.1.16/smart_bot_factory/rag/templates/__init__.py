@@ -1,0 +1,3 @@
+# SQL templates directory
+
+
