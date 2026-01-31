@@ -1,0 +1,199 @@
+# Datawhisk
+
+[![PyPI version](https://badge.fury.io/py/datawhisk.svg)](https://badge.fury.io/py/datawhisk)
+[![Python Support](https://img.shields.io/pypi/pyversions/datawhisk.svg)](https://pypi.org/project/datawhisk/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Coverage](https://codecov.io/gh/Ramku3639/datawhisk/branch/main/graph/badge.svg)](https://codecov.io/gh/Ramku3639/datawhisk)
+
+**A lightweight, practical utility library for data scientists and ML engineers.**
+
+datawhisk provides a curated collection of analytical helpers designed to streamline common data science workflows. Built with speed, simplicity, and reliability in mind.
+
+## Why datawhisk?
+
+- **🚀 Fast**: Optimized implementations faster than manual approaches
+- **🎯 Practical**: Solves real problems data scientists face daily
+- **🪶 Lightweight**: Minimal dependencies, quick to install
+- **📊 Reliable**: 90%+ test coverage, production-ready
+- **🧩 Intuitive**: Clean APIs that "just work"
+
+## Installation
+
+```bash
+pip install datawhisk
+```
+
+With visualization support:
+```bash
+pip install datawhisk[viz]
+```
+
+## Quick Start
+
+### Memory Optimizer
+
+Automatically optimize DataFrame memory usage:
+
+```python
+from datawhisk.analytical import optimize_memory
+
+import pandas as pd
+
+# Create a DataFrame
+df = pd.DataFrame({
+    'id': range(1000000),
+    'category': ['A', 'B', 'C'] * 333334,
+    'value': [1.5] * 1000000
+})
+
+# Optimize memory
+optimized_df, report = optimize_memory(df, return_report=True)
+
+print(f"Memory reduced by {report['reduction_percent']:.1f}%")
+# Output: Memory reduced by 65.2%
+```
+
+### Correlation Analyzer
+
+Smart correlation analysis with multicollinearity detection:
+
+```python
+from datawhisk.analytical import analyze_correlations
+
+# Analyze correlations
+results = analyze_correlations(
+    df,
+    target='price',
+    threshold=0.8,
+    method='pearson'
+)
+
+print(results.recommendations)
+# Output: ['Remove feature_X (VIF=12.3)', 'Keep feature_Y (VIF=2.1)']
+```
+
+### Quick EDA Reporter
+
+Fast exploratory data analysis:
+
+```python
+from datawhisk.analytical import quick_eda
+
+# Generate EDA report (Standard)
+report = quick_eda(df, visualize=True)
+
+# Generate Custom Report (Modular)
+# checks only missing values and structure
+report_custom = quick_eda(
+    df,
+    check_missing=True,
+    check_structure=True,
+    check_outliers=False,
+    check_distribution=False
+)
+
+print(report.summary)
+# Dataset Shape: (1000, 5)
+# Missing Values: 23 (2.3%)
+# Outliers Detected: 156 total
+# High cardinality columns: ['user_id', 'transaction_id']
+```
+
+## Features
+
+### Analytical Helpers
+
+- **Memory Optimizer**: Automatically downcast dtypes and optimize memory usage
+- **Correlation Analyzer**: Calculate correlations with VIF and multicollinearity detection
+- **Quick EDA Reporter**: Fast statistical summaries with anomaly detection
+
+## Comparison with Alternatives
+
+| Feature | datawhisk | Pandas | pandas-profiling |
+|---------|---------|--------|------------------|
+| Memory Optimization | ✅ Auto | Manual | ❌ |
+| VIF Calculation | ✅ Built-in | Manual | ❌ |
+| Speed (EDA) | ⚡ Fast | N/A | 🐌 Slow |
+| Dependencies | 🪶 3 core | - | 📦 20+ |
+| Learning Curve | 📉 Low | Medium | Medium |
+
+## Documentation
+
+- **[Installation Guide](https://github.com/Ramku3639/datawhisk/blob/main/docs/installation.md)**
+- **[Quick Start](https://github.com/Ramku3639/datawhisk/blob/main/docs/quickstart.md)**
+- **[API Reference](https://github.com/Ramku3639/datawhisk/blob/main/docs/api-reference.md)**
+- **[Tutorials](https://github.com/Ramku3639/datawhisk/tree/main/docs/tutorials)**
+- **[Full Documentation](https://github.com/Ramku3639/datawhisk/blob/main/docs/README.md)**
+
+## Requirements
+
+- Python 3.8+
+- numpy >= 1.20.0
+- pandas >= 1.3.0
+- scipy >= 1.7.0
+
+Optional:
+- matplotlib >= 3.3.0 (for visualizations)
+- seaborn >= 0.11.0 (for enhanced visualizations)
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+```bash
+# Clone the repository
+git clone https://github.com/Ramku3639/datawhisk.git
+cd datawhisk
+
+# Install development dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Run code quality checks
+black datawhisk tests
+flake8 datawhisk tests
+mypy datawhisk
+```
+
+## Roadmap
+
+### v0.2.0 (Next Release)
+- [ ] Statistical utilities
+- [ ] Data validation helpers
+- [ ] Extended visualization options
+
+### v0.3.0
+- [ ] Time series utilities
+- [ ] Text processing helpers
+- [ ] Performance benchmarking tools
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Citation
+
+If you use datawhisk in your research, please cite:
+
+```bibtex
+@software{datawhisk,
+  author = {RamMohan Reddy K},
+  title = {datawhisk: A Practical Utility Library for Data Scientists},
+  year = {2025},
+  url = {https://github.com/Ramku3639/datawhisk}
+}
+```
+
+## Support
+
+- 📧 Email:  ramku3639@gmail.com
+- 🐛 [Issue Tracker](https://github.com/Ramku3639/datawhisk/issues)
+- 💬 [Discussions](https://github.com/Ramku3639/datawhisk/discussions)
+
+---
+
+**Built with ❤️ for the data science community**
