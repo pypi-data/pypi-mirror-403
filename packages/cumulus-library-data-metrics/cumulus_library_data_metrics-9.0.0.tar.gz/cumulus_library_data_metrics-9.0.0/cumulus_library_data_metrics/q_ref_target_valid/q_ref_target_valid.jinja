@@ -1,0 +1,53 @@
+{% import 'utils.jinja' as utils %}
+
+{% set field_safe = field|lower|replace('.', '_') %}
+
+CREATE TABLE {{ study_prefix }}__q_ref_target_valid_{{ src|lower }}_{{ field_safe }}_{{ dest|lower }} AS (
+
+{% if '.' in field and not schema[field.split('.')[0]][field.split('.')[1]] %}
+    SELECT id FROM {{ src }} WHERE 1=0  -- return an empty table
+{% else %}
+
+WITH
+reduced_src AS (
+    SELECT
+        id,
+        {{ utils.extract_status(src) }} AS status,
+{%- if is_array %}
+        t.row.reference AS target
+    FROM {{ src }},
+        UNNEST({{ field }}) AS t (row)
+{%- elif parent_array %}
+        t.row.{{ field.split('.')[1] }}.reference AS target
+    FROM {{ src }},
+        UNNEST({{ field.split('.')[0] }}) AS t (row)
+{%- else %}
+        {{ field }}.reference AS target
+    FROM {{ src }}
+{%- endif %}
+),
+
+grouped_bad_refs AS (
+    SELECT
+        src.id,
+        ARBITRARY(src.status) AS status,
+        ARRAY_AGG(src.target) AS target
+    FROM reduced_src AS src
+    LEFT JOIN {{ dest }} AS dest
+    ON SUBSTRING(src.target, LENGTH('{{ dest }}/') + 1) = dest.id
+    WHERE
+        REGEXP_LIKE(src.target, '^{{ dest }}/')
+        AND dest.id IS NULL
+    GROUP BY src.id
+)
+
+SELECT
+    src.id,
+    status,
+    '{{ field_safe }}' AS field,
+    {{ utils.array_to_string('target') }} AS target
+FROM grouped_bad_refs AS src
+
+{% endif %} -- closing initial "return empty table" check
+
+);

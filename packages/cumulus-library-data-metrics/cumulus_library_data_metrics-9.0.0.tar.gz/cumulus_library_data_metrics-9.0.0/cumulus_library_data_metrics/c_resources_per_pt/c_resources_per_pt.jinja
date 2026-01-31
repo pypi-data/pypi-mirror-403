@@ -1,0 +1,135 @@
+{% import 'utils.jinja' as utils %}
+{% import 'db_utils.jinja' as db_utils %}
+
+CREATE TABLE {{ study_prefix }}__c_resources_per_pt_summary AS (
+
+WITH
+patient_refs AS (
+    SELECT DISTINCT
+      concat('Patient/', id) AS ref
+    FROM patient
+),
+
+{% for resource, field_name in patient_fields.items() %}
+cat_slice_{{ resource|lower }}_codes AS
+{{ utils.extract_category_codes(resource, categories.get(resource, {})) }},
+{% endfor %}
+
+counts_by_pt AS (
+{% for resource, field_name in patient_fields.items() %}
+    SELECT
+        patient_refs.ref AS patient,
+        '{{ resource }}' AS resource,
+        {{ utils.coalesce_missing('cat_codes.category') }} AS category,
+        COUNT(DISTINCT src.id) AS num_resources
+    FROM patient_refs
+    LEFT JOIN {{ resource }} AS src
+    ON patient_refs.ref = src.{{ field_name }}.reference
+    LEFT JOIN cat_slice_{{ resource|lower }}_codes AS cat_codes
+    ON src.id = cat_codes.id
+    GROUP BY patient_refs.ref, cat_codes.category
+    {%- if not loop.last %}
+    UNION ALL
+    {%- endif -%}
+{% endfor %}
+),
+
+{% for resource in categories %}
+cat_{{ resource|lower }}_values AS (
+    SELECT DISTINCT category
+    FROM counts_by_pt
+    WHERE resource = '{{ resource }}'
+),
+{% endfor %}
+
+{% for resource, field_name in patient_fields.items() %}
+summed_{{ resource|lower }}_counts AS (
+    SELECT
+        patient,
+        resource,
+        SUM(num_resources) AS num_resources
+    FROM counts_by_pt
+    GROUP BY patient, resource
+),
+{% endfor %}
+
+summed_counts AS (
+    SELECT
+        patient,
+        SUM(num_resources) AS num_resources
+    FROM counts_by_pt
+    GROUP BY patient
+)
+
+SELECT
+    'cumulus__all' AS resource,
+    'cumulus__all' AS category,
+    CAST({{ db_utils.median('num_resources') }} AS DECIMAL(18, 2)) AS "median",
+    CAST(AVG(num_resources) AS DECIMAL(18, 2)) AS average,
+    CAST(STDDEV_POP(num_resources) AS DECIMAL(18, 2)) AS std_dev,
+    MAX(num_resources) AS "max"
+FROM summed_counts
+UNION ALL
+-- duplicate the above for consistency with flagging
+-- "no category available" situations via a NULL category
+SELECT
+    'cumulus__all' AS resource,
+    CAST(NULL AS VARCHAR) AS category,
+    CAST({{ db_utils.median('num_resources') }} AS DECIMAL(18, 2)) AS "median",
+    CAST(AVG(num_resources) AS DECIMAL(18, 2)) AS average,
+    CAST(STDDEV_POP(num_resources) AS DECIMAL(18, 2)) AS std_dev,
+    MAX(num_resources) AS "max"
+FROM summed_counts
+UNION ALL
+{%- for resource in patient_fields %}
+-- If you change this cumulus_all block, also change its
+-- duplicate block below where we use NULL as the category.
+SELECT
+    '{{ resource }}' AS resource,
+    'cumulus__all' AS category,
+    CAST({{ db_utils.median('num_resources') }} AS DECIMAL(18, 2)) AS "median",
+    CAST(AVG(num_resources) AS DECIMAL(18, 2)) AS average,
+    CAST(STDDEV_POP(num_resources) AS DECIMAL(18, 2)) AS std_dev,
+    MAX(num_resources) AS "max"
+FROM summed_{{ resource|lower }}_counts
+WHERE resource = '{{ resource }}'
+{% if resource in categories %}
+UNION ALL
+SELECT
+    '{{ resource }}' AS resource,
+    cat_values.category,
+    CAST({{ db_utils.median('COALESCE(num_resources, 0)') }} AS DECIMAL(18, 2)) AS "median",
+    CAST(AVG(COALESCE(num_resources, 0)) AS DECIMAL(18, 2)) AS average,
+    CAST(STDDEV_POP(COALESCE(num_resources, 0)) AS DECIMAL(18, 2)) as std_dev,
+    MAX(num_resources) AS "max"
+FROM patient_refs
+CROSS JOIN cat_{{ resource|lower }}_values AS cat_values
+LEFT JOIN counts_by_pt AS counts
+ON counts.resource = '{{ resource }}'
+AND counts.patient = patient_refs.ref
+AND counts.category = cat_values.category
+GROUP BY cat_values.category
+HAVING MAX(num_resources) > 0
+{% else %}
+-- copy of cumulus__all above, but with a NULL category,
+-- for consistency: there's always a roll-up and a detailed row,
+-- and this is how we treat other "no categorization available"
+-- metrics like rows in q_date_recent.
+-- Note how this is different than "cumulus__none" here, because
+-- there just isn't a categorization we even look for.
+UNION ALL
+SELECT
+    '{{ resource }}' AS resource,
+    CAST(NULL AS VARCHAR) AS category,
+    CAST({{ db_utils.median('num_resources') }} AS DECIMAL(18, 2)) AS "median",
+    CAST(AVG(num_resources) AS DECIMAL(18, 2)) AS average,
+    CAST(STDDEV_POP(num_resources) AS DECIMAL(18, 2)) AS std_dev,
+    MAX(num_resources) AS "max"
+FROM summed_{{ resource|lower }}_counts
+WHERE resource = '{{ resource }}'
+{% endif %}
+{%- if not loop.last %}
+UNION ALL
+{%- endif -%}
+{%- endfor %}
+);

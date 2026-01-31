@@ -1,0 +1,89 @@
+{% import 'utils.jinja' as utils %}
+
+CREATE TABLE {{ study_prefix }}__count_c_system_use_{{ src|lower }}_{{ field|lower }} AS (
+
+WITH
+{% if use_category %}
+src_categories AS {{ utils.extract_category_codes(src, cat_info) }},
+{% endif %}
+
+src_systems_flat AS (
+    SELECT
+        id,
+
+    {% if is_coding %} -- a single Coding field
+        {{ field }}.system
+    FROM {{ src }}
+
+    {% elif is_array %} -- array of CodeableConcepts
+        c.coding.system
+    FROM {{ src }},
+        UNNEST({{ field }}) AS cc (cc_row),
+        UNNEST(cc.cc_row.coding) AS c (coding)
+
+    {% else %} -- default is a single CodeableConcept
+        c.coding.system
+    FROM {{ src }},
+        UNNEST({{ field }}.coding) AS c (coding)
+    {% endif %}
+),
+src_systems_readable AS (
+    SELECT
+        id,
+        CASE
+        {% for url, name in system_names.items() %}
+        WHEN system = '{{ url }}'
+        THEN '{{ name }}'
+        {% endfor %}
+        ELSE system
+        END AS system
+    FROM src_systems_flat
+),
+src_systems AS (
+    SELECT
+        id,
+        ARRAY_AGG(system) AS systems
+    FROM src_systems_readable
+    GROUP BY id
+),
+
+simplified AS (
+    SELECT
+        src.id,
+
+        {% if dates %}
+        {{ utils.get_date_string(dates, 'year') }} AS "year",
+        {% endif %}
+
+        {% if use_category %}
+        {{ utils.coalesce_missing('src_categories.category') }} AS category,
+        {% endif %}
+
+        {{ utils.array_to_string('src_systems.systems') }} AS systems,
+        {{ utils.extract_status(src, coalesced=true) }} AS status
+
+    FROM {{ src }} AS src
+
+    {% if use_category %}
+    LEFT JOIN src_categories
+    ON src.id = src_categories.id
+    {% endif %}
+
+    LEFT JOIN src_systems
+    ON src.id = src_systems.id
+)
+
+
+{% call utils.make_counts('simplified', output_mode) %}
+    {% if use_category %}
+    category,
+    {% endif %}
+
+    systems,
+    status
+
+    {% if dates %}
+    , "year"
+    {% endif %}
+{% endcall %}
+);
