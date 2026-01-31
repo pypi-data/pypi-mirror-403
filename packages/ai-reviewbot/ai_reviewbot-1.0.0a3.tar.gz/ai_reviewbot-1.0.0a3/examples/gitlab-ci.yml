@@ -1,0 +1,50 @@
+# =============================================================================
+# AI Code Review - GitLab CI Template
+# =============================================================================
+# Include this template in your .gitlab-ci.yml:
+#
+#   include:
+#     - remote: 'https://raw.githubusercontent.com/KonstZiv/ai-code-reviewer/main/examples/gitlab-ci.yml'
+#
+# Or copy the job definition to your .gitlab-ci.yml
+#
+# Required CI/CD variables (Settings → CI/CD → Variables):
+#   - GOOGLE_API_KEY: Your Google API key for Gemini (masked)
+#   - GITLAB_TOKEN: Project Access Token with 'api' scope (masked)
+#
+# How to create Project Access Token:
+#   1. Go to Settings → Access Tokens
+#   2. Create token with:
+#      - Role: Developer
+#      - Scope: api
+#   3. Add as CI/CD variable: GITLAB_TOKEN
+# =============================================================================
+
+# AI Code Review job
+ai-review:
+  stage: test
+  image: ghcr.io/konstziv/ai-code-reviewer:1
+
+  # Only run on merge requests
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+  variables:
+    # Project Access Token (set in CI/CD settings)
+    GITLAB_TOKEN: $GITLAB_TOKEN
+    # Google API key (set in CI/CD settings)
+    GOOGLE_API_KEY: $GOOGLE_API_KEY
+    # Optional: customize settings
+    # LANGUAGE: "en"
+    # LANGUAGE_MODE: "adaptive"
+    # GEMINI_MODEL: "gemini-2.5-flash"
+    # LOG_LEVEL: "INFO"
+
+  script:
+    - ai-review
+
+  # Allow failure so it doesn't block the pipeline
+  allow_failure: true
+
+  # Cache nothing - stateless
+  cache: []
