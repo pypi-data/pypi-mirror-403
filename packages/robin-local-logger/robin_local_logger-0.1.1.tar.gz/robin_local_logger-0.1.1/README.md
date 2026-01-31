@@ -1,0 +1,50 @@
+# robin_local_logger
+
+Librería de Python para logging local con rotación automática por tamaño (MB) e integración directa con FastAPI mediante rutas JSON protegidas.
+
+## Características
+- **Rotación por espacio:** Elimina las líneas más antiguas cuando el archivo supera el límite de MB definido.
+- **Formato JSON:** Todos los logs se guardan y entregan como objetos JSON estructurados.
+- **Integración FastAPI:** Monta automáticamente `/robin/logs` para lectura y escritura.
+- **Seguridad:** Soporte opcional para API Key mediante el header `X-API-Key`.
+- **Captura automática:** Captura logs del sistema (Uvicorn/FastAPI).
+
+## Instalación
+```bash
+pip install robin-local-logger
+```
+
+## Uso Standalone (Sin servidor propio)
+Si no usas FastAPI en tu proyecto, Robin puede iniciar su propio servidor para que puedas ver y registrar logs:
+
+```python
+from robin_local_logger import init_robin_logger
+
+# Esto inicia un servidor FastAPI interno en el puerto 8000
+init_robin_logger(
+    log_file="./logs/sistema.log", 
+    port=8000, 
+    api_key="mi_clave"
+)
+```
+
+## Uso Rápido (Integrado en FastAPI)
+```python
+from fastapi import FastAPI
+from robin_local_logger import init_robin_logger
+
+app = FastAPI()
+
+@app.on_event("startup")
+async def startup():
+    init_robin_logger(
+        app, 
+        log_file="./logs/app.log", 
+        max_mb=5.0, 
+        api_key="tu_clave_secreta"
+    )
+```
+
+## Endpoints
+- `GET /robin/logs?lines=200`: Devuelve los últimos logs en formato JSON.
+- `POST /robin/logs`: Permite registrar logs manualmente enviando `{"message": "...", "level": "info"}`.
