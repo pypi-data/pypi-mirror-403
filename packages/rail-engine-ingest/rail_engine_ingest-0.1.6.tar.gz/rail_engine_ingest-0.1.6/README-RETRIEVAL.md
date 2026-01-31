@@ -1,0 +1,90 @@
+# Rail Engine Retrieval SDK
+
+Python SDK for retrieving and searching data from Railtown AI Rail Engine - handles embeddings, storage documents, and indexed content.
+
+## Overview
+
+The `rail-engine` package provides a Pythonic interface for retrieving and searching data from Rail Engine. It supports async/await patterns, client-side filtering, automatic pagination, and Pydantic model deserialization.
+
+## Installation
+
+```bash
+uv pip install rail-engine
+```
+
+## Quick Start
+
+```python
+import asyncio
+from railtown.engine import Railengine
+
+async def main():
+    # Initialize client (reads from ENGINE_PAT and ENGINE_ID env vars)
+    async with Railengine() as client:
+        # Search vector store
+        results = client.search_vector_store(
+            query="apple"
+        )
+        async for item in results:
+            print(item)
+
+asyncio.run(main())
+```
+
+## Configuration
+
+### Environment Variables
+
+- `ENGINE_PAT` (required) - Personal Access Token
+- `ENGINE_ID` (required) - Engine ID (can also be passed to constructor)
+- `RAILTOWN_API_URL` (optional) - Base API URL (defaults to `https://cndr.railtown.ai/api`)
+
+### Constructor Parameters
+
+- `pat` (optional) - PAT token (if not provided, reads from `ENGINE_PAT` env)
+- `engine_id` (optional) - Engine ID (if not provided, reads from `ENGINE_ID` env, required if not in env)
+- `api_url` (optional) - Base API URL (if not provided, reads from `RAILTOWN_API_URL` env or defaults to production)
+- `model` (optional) - Pydantic model type for deserializing retrieved data
+
+## Features
+
+- **Multiple retrieval methods**:
+  - `search_vector_store()` - Semantic search in vector stores
+  - `get_storage_document_by_event_id()` - Get document by EventId
+  - `get_storage_document_by_customer_key()` - Get documents by customer key
+  - `query_storage_by_jsonpath()` - Query using JSONPath
+  - `list_storage_documents()` - List all documents with pagination
+  - `search_index()` - Full-text search using Azure Search
+- **Client-side filtering** - Filter results using `filter_fn` parameter
+- **Automatic pagination** - Handles pagination automatically
+- **Model deserialization** - Optional Pydantic model support with per-call override
+- **Graceful error handling** - Returns None or empty iterables on errors
+- **Async/await support** - Built for modern async Python applications
+
+## Error Handling
+
+The SDK provides custom exception classes:
+
+- `RailtownError` - Base exception
+- `RailtownBadRequestError` - 400 Bad Request
+- `RailtownUnauthorizedError` - 401 Unauthorized
+- `RailtownNotFoundError` - 404 Not Found
+- `RailtownConflictError` - 409 Conflict
+- `RailtownServerError` - 5xx Server errors
+
+Returns `None` or empty iterables on errors (graceful degradation).
+
+## Requirements
+
+- uv
+- Python 3.10+
+- httpx >= 0.24.0
+- pydantic >= 1.10.0
+
+## Related Package
+
+For ingesting data into Rail Engine, see [`rail-engine`](https://pypi.org/project/rail-engine/).
+
+## License
+
+MIT
