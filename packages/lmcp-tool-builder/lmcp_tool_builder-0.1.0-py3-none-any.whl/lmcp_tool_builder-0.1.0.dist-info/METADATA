@@ -1,0 +1,315 @@
+Metadata-Version: 2.4
+Name: lmcp-tool-builder
+Version: 0.1.0
+Summary: LMCP Tool Builder - 简化 LangChain 工具加载和集成
+Home-page: https://github.com/lmcp-dev/lmcp-tool-builder
+Author: LMCP Team
+Author-email: LMCP Team <support@lmcp.dev>
+License: MIT
+Project-URL: Homepage, https://github.com/lmcp-dev/lmcp-tool-builder
+Project-URL: Documentation, https://lmcp.dev/docs/tool-builder
+Project-URL: Repository, https://github.com/lmcp-dev/lmcp-tool-builder
+Project-URL: Issues, https://github.com/lmcp-dev/lmcp-tool-builder/issues
+Keywords: lmcp,langchain,tools,ai,llm,agent,tool-builder,tool-management
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: requests>=2.28.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: flake8>=6.0.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Requires-Dist: twine>=4.0.0; extra == "dev"
+Requires-Dist: build>=0.10.0; extra == "dev"
+Provides-Extra: langchain
+Requires-Dist: langchain>=0.1.0; extra == "langchain"
+Requires-Dist: langchain-openai>=0.0.1; extra == "langchain"
+Dynamic: author
+Dynamic: home-page
+Dynamic: license-file
+Dynamic: requires-python
+
+# LMCP Tool Builder
+
+[![PyPI version](https://img.shields.io/pypi/v/lmcp-tool-builder.svg)](https://pypi.org/project/lmcp-tool-builder/)
+[![Python versions](https://img.shields.io/pypi/pyversions/lmcp-tool-builder.svg)](https://pypi.org/project/lmcp-tool-builder/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+LMCP Tool Builder 是一个用于简化 LangChain 工具加载和集成的 Python 库。它提供了与 LMCP (Language Model Control Platform) 服务器无缝集成的能力，支持工具发现、构建和加载。
+
+## 主要特性
+
+- 🚀 **一键式工具加载**: 从 LMCP 服务器自动发现和加载工具
+- 🔄 **智能缓存**: 支持本地工具缓存，提高加载速度
+- 🛠️ **LangChain 集成**: 直接生成 LangChain 兼容的工具列表
+- 📡 **服务器回退**: 当服务器不可用时自动回退到本地工具
+- 🔧 **调试模式**: 详细的调试输出，便于问题排查
+- 📦 **模块化设计**: 易于扩展和定制
+
+## 安装
+
+### 从 PyPI 安装
+
+```bash
+pip install lmcp-tool-builder
+```
+
+### 从源码安装
+
+```bash
+git clone https://github.com/lmcp-dev/lmcp-tool-builder.git
+cd lmcp-tool-builder
+pip install -e .
+```
+
+## 快速开始
+
+### 基本使用
+
+```python
+from lmcp_tool_builder import LMCPToolBuilder
+
+# 创建工具构建器
+builder = LMCPToolBuilder(
+    server_url="http://localhost:8000",
+    api_key="your-api-key-here",
+    local_tools_file="bot_tools.py",  # 可选：本地工具缓存文件
+    debug=False  # 可选：调试模式
+)
+
+# 构建并加载工具
+tools = builder.build_and_load_tools()
+
+print(f"✅ 加载了 {len(tools)} 个工具")
+```
+
+### 与 LangChain 集成
+
+```python
+from langchain_openai import ChatOpenAI
+from langchain.agents import create_agent
+from lmcp_tool_builder import LMCPToolBuilder
+
+# 创建工具构建器
+builder = LMCPToolBuilder(
+    server_url="http://localhost:8000",
+    api_key="your-api-key-here"
+)
+
+# 构建并加载工具
+tools = builder.build_and_load_tools()
+
+# 创建 LangChain agent
+agent = create_agent(
+    model=ChatOpenAI(
+        model="gpt-3.5-turbo",
+        api_key="your-openai-api-key"
+    ),
+    tools=tools,
+    system_prompt="You are a helpful assistant",
+)
+
+# 使用 agent
+response = agent.invoke(
+    {"messages": [{"role": "user", "content": "北京现在的天气怎么样？"}]}
+)
+print(response)
+```
+
+## 高级用法
+
+### 启用调试模式
+
+```python
+builder = LMCPToolBuilder(
+    server_url="http://localhost:8000",
+    api_key="your-api-key-here",
+    debug=True  # 启用调试输出
+)
+
+# 现在会显示详细的调试信息
+tools = builder.build_and_load_tools()
+```
+
+### 自定义本地工具文件
+
+```python
+builder = LMCPToolBuilder(
+    server_url="http://localhost:8000",
+    api_key="your-api-key-here",
+    local_tools_file="my_tools.py"  # 自定义工具文件路径
+)
+
+# 工具将保存到 my_tools.py
+tools = builder.build_and_load_tools()
+```
+
+### 手动构建工具模块
+
+```python
+builder = LMCPToolBuilder(
+    server_url="http://localhost:8000",
+    api_key="your-api-key-here"
+)
+
+# 1. 发现工具
+server_tools = builder.discover_tools()
+
+# 2. 构建工具模块
+module_code = builder.build_tools_module(server_tools)
+
+# 3. 保存模块
+builder.save_tools_module(module_code)
+
+# 4. 加载工具
+tools = builder.load_tools_from_module()
+```
+
+## API 参考
+
+### LMCPToolBuilder 类
+
+#### 构造函数
+
+```python
+LMCPToolBuilder(
+    server_url: str = "http://localhost:8000",
+    api_key: str = "",
+    local_tools_file: str = "bot_tools.py",
+    debug: bool = False
+)
+```
+
+**参数:**
+- `server_url`: LMCP 服务器地址
+- `api_key`: 应用 API Key
+- `local_tools_file`: 本地工具缓存文件路径（可选）
+- `debug`: 是否启用调试模式
+
+#### 主要方法
+
+- `discover_tools() -> List[str]`: 从服务器发现工具，失败时回退到本地工具
+- `build_tools_module(server_tools: List[str]) -> str`: 构建工具模块代码
+- `save_tools_module(module_code: str)`: 保存工具模块到文件
+- `load_tools_from_module() -> List`: 从模块中加载工具函数
+- `build_and_load_tools() -> List`: 构建并加载工具（推荐使用）
+- `test_tools(tools: List)`: 测试工具函数
+
+## 命令行工具
+
+安装后可以使用命令行工具：
+
+```bash
+# 显示帮助信息
+lmcp-tool-builder --help
+
+# 构建并加载工具
+lmcp-tool-builder build --server-url http://localhost:8000 --api-key your-key
+
+# 测试工具
+lmcp-tool-builder test --tools-file bot_tools.py
+```
+
+## 配置 LMCP 服务器
+
+在使用 LMCP Tool Builder 之前，需要先设置 LMCP 服务器：
+
+1. **安装 LMCP 服务器**:
+   ```bash
+   git clone https://github.com/lmcp-dev/lmcp-server.git
+   cd lmcp-server
+   pip install -r requirements.txt
+   python server.py
+   ```
+
+2. **创建应用并获取 API Key**:
+   - 访问 `http://localhost:8000`
+   - 注册用户并登录
+   - 在应用管理页面创建应用
+   - 复制应用的 API Key
+
+3. **创建工具**:
+   - 在工具管理页面创建工具
+   - 工具必须是有效的 Python 函数，包含文档字符串
+
+## 开发
+
+### 设置开发环境
+
+```bash
+# 克隆仓库
+git clone https://github.com/lmcp-dev/lmcp-tool-builder.git
+cd lmcp-tool-builder
+
+# 创建虚拟环境
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# 或
+venv\Scripts\activate  # Windows
+
+# 安装开发依赖
+pip install -e ".[dev]"
+```
+
+### 运行测试
+
+```bash
+# 运行所有测试
+pytest
+
+# 运行测试并生成覆盖率报告
+pytest --cov=lmcp_tool_builder tests/
+
+# 运行特定测试文件
+pytest tests/test_builder.py
+```
+
+### 代码质量检查
+
+```bash
+# 代码格式化
+black lmcp_tool_builder tests
+
+# 代码检查
+flake8 lmcp_tool_builder tests
+
+# 类型检查
+mypy lmcp_tool_builder
+```
+
+## 贡献
+
+欢迎贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解如何参与项目开发。
+
+## 许可证
+
+本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+
+## 支持
+
+- 📖 **文档**: [https://lmcp.dev/docs/tool-builder](https://lmcp.dev/docs/tool-builder)
+- 🐛 **问题跟踪**: [GitHub Issues](https://github.com/lmcp-dev/lmcp-tool-builder/issues)
+- 💬 **讨论**: [GitHub Discussions](https://github.com/lmcp-dev/lmcp-tool-builder/discussions)
+
+## 相关项目
+
+- [LMCP Server](https://github.com/lmcp-dev/lmcp-server) - LMCP 服务器端
+- [LMCP Client](https://github.com/lmcp-dev/lmcp-client) - LMCP 客户端库
+- [LMCP Examples](https://github.com/lmcp-dev/lmcp-examples) - 使用示例
+
+---
+
+**LMCP Tool Builder** - 让 LangChain 工具管理变得更简单！ 🚀
