@@ -1,0 +1,98 @@
+?start: infrastructure_file | module_file
+
+// Root infrastructure file: services block and optional ACL
+infrastructure: decorator* "infrastructure" CNAME "{" services_block acl_block? "}"
+
+// A file that may contain imports/decls alongside one infrastructure
+infrastructure_file: module_decl? (import_stmt | decl)* infrastructure (import_stmt | decl)*
+services_block: "services" "{" service_item_infra* "}"
+service_item_infra: service_link | service_localref
+service_localref: CNAME ";"
+service_link: CNAME "from" STRING ";"
+
+// Generic module file (service module or types module)
+module_file: module_decl? (import_stmt | decl)*
+
+module_decl: "module" STRING ";"
+
+decl: model_decl | service_decl | error_decl | enum_decl
+
+// Documentation comments
+DOC_LINE: /\/\/\/[^\n]*/
+DOC_BLOCK: "/**" /[\s\S]*?/ "*/"
+
+// Decorators and inline attributes
+decorator: "@" CNAME ("(" attr_args? ")")?
+attr_args: attr_arg ("," attr_arg)*
+attr_arg: CNAME ":" attr_value | attr_value
+attr_inline: "[" (attr_kv ("," attr_kv)*)? ","? "]"
+attr_kv: CNAME ":" attr_value
+
+attr_value: STRING | NUMBER | TRUE | FALSE | CNAME
+
+TRUE: "true"
+FALSE: "false"
+NUMBER: SIGNED_NUMBER
+
+domain_kw: "domain"
+model_decl: doc_comment? decorator* domain_kw? "model" CNAME attr_inline? "{" field* "}"
+field: doc_comment? decorator* CNAME ":" type attr_inline? ";"
+
+// Types (scalars, names, and generic list[T])
+type: TYPE opt_q | CNAME opt_q | DOTTED_NAME opt_q | list_type opt_q
+opt_q: QMARK?
+list_type: "list" "[" type "]"
+TYPE: "int" | "string" | "bool" | "float"
+QMARK: "?"
+
+// Enums
+enum_base: "int" | "string"
+enum_decl: doc_comment? decorator* domain_kw? "enum" CNAME (":" enum_base)? attr_inline? "{" enum_member* "}" ";"?
+enum_member: doc_comment? decorator* CNAME ("=" (STRING | NUMBER))? attr_inline? ";"?
+
+service_decl: doc_comment? decorator* "service" CNAME attr_inline? "{" service_item* "}"
+service_item: rpc_decl | emit_decl | listen_decl | namespace_decl
+namespace_decl: doc_comment? decorator* "namespace" CNAME attr_inline? "{" service_item* "}"
+rpc_decl: doc_comment? decorator* "rpc" CNAME "(" param_list? ")" "->" return_type attr_inline? ";"
+emit_decl: doc_comment? decorator* "emit" CNAME "(" param_list? ")" attr_inline? ";"
+listen_decl: doc_comment? decorator* "listen" CNAME "(" param_list? ")" attr_inline? ";"
+// Errors use model-like block syntax now (reuse `field` grammar)
+error_decl: doc_comment? decorator* domain_kw? "error" CNAME attr_inline? "{" field* "}" ";"?
+param_list: param ("," param)*
+param: doc_comment? decorator* CNAME ":" type attr_inline?
+
+// Inline return type support
+return_type: type | return_struct
+return_struct: "{" return_field* "}"
+// allow optional semicolon for convenience inside return structs
+return_field: doc_comment? decorator* CNAME ":" type attr_inline? ";"?
+
+// Module/type names may still be dotted
+DOTTED_NAME: CNAME ("." CNAME)*
+
+// Imports by file path (quoted), supports relative paths and special root-prefix $/
+import_stmt: "from" STRING "import" import_item ("," import_item)* ";"
+import_item: "model" CNAME ("as" CNAME)? -> import_model
+           | "error" CNAME ("as" CNAME)? -> import_error
+           | "service" CNAME ("as" CNAME)? -> import_service
+           | "enum" CNAME ("as" CNAME)? -> import_enum
+
+// ACL block inside infrastructure
+acl_block: "acl" "{" acl_rule* "}"
+acl_rule: "allow" CNAME "->" "[" acl_action* "]"
+acl_action: call_action | listen_action
+call_action: "call" DOTTED_NAME ";"
+listen_action: "listen" DOTTED_NAME ";"
+
+%import common.CNAME
+%import common.WS
+%import common.ESCAPED_STRING -> STRING
+%import common.SIGNED_NUMBER
+%ignore WS
+// Regular single-line comments `// ...` (but not `///` which are doc-lines)
+COMMENT: /\/\/(?!\/)[^\n]*/
+%ignore COMMENT
+
+doc_comment: DOC_LINE+ | DOC_BLOCK
+
+
